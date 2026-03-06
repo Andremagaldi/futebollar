@@ -168,7 +168,7 @@ export default function Artilheiros() {
       .eq("game_id", gameId)
       .gt("gols", 0)
       .order("gols", { ascending: false });
-    setRanking((partida as RankingItem[]) || []);
+    setRanking((partida as unknown as RankingItem[]) || []);
 
     const { data: temporada } = await supabase
       .from("gols_partida")
