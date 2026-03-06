@@ -1,533 +1,438 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
-type Step = "validando" | "invalido" | "auth" | "perfil" | "aguardando";
+interface Convite {
+  id: string;
+  token: string;
+  nome_destinatario: string | null;
+  usado: boolean;
+  expira_em: string;
+  criado_em: string;
+}
 
-export default function ConvitePage() {
-  const { token } = useParams<{ token: string }>();
+interface Pedido {
+  id: string;
+  nome_completo: string;
+  telefone: string;
+  email: string | null;
+  posicao: string;
+  categoria: string;
+  tipo: string;
+  status: string;
+  criado_em: string;
+  observacao: string | null;
+  convites: { token: string } | null;
+}
+
+type Aba = "pedidos" | "convites";
+
+export default function AdminConvitesPage() {
   const router = useRouter();
-  const [step, setStep] = useState<Step>("validando");
-  const [motivoInvalido, setMotivoInvalido] = useState("");
-  const [conviteId, setConviteId] = useState<string | null>(null);
-
-  // Auth fields
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [modoAuth, setModoAuth] = useState<"signup" | "login">("signup");
-  const [loadingAuth, setLoadingAuth] = useState(false);
-  const [erroAuth, setErroAuth] = useState<string | null>(null);
-
-  // Perfil fields
-  const [nomeCompleto, setNomeCompleto] = useState("");
-  const [telefone, setTelefone] = useState("");
-  const [posicao, setPosicao] = useState("linha");
-  const [categoria, setCategoria] = useState("membro");
-  const [tipo, setTipo] = useState("avulso");
-  const [salvandoPerfil, setSalvandoPerfil] = useState(false);
-  const [erroPerfil, setErroPerfil] = useState<string | null>(null);
+  const [aba, setAba] = useState<Aba>("pedidos");
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [convites, setConvites] = useState<Convite[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adminId, setAdminId] = useState<string | null>(null);
+  const [acao, setAcao] = useState<string | null>(null);
+  const [nomeConvite, setNomeConvite] = useState("");
+  const [criandoConvite, setCriandoConvite] = useState(false);
+  const [linkCopiado, setLinkCopiado] = useState<string | null>(null);
+  const [filtroStatus, setFiltroStatus] = useState<
+    "pendente" | "aprovado" | "rejeitado"
+  >("pendente");
 
   useEffect(() => {
-    validarToken();
-  }, [token]);
-
-  // Detecta se voltou do OAuth Google com sessão ativa
-  useEffect(() => {
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === "SIGNED_IN" && session) {
-          // Verifica se já tem perfil completo
-          const { data: user } = await supabase
-            .from("users")
-            .select("nome_completo")
-            .eq("id", session.user.id)
-            .single();
-
-          if (user?.nome_completo) {
-            setStep("aguardando");
-          } else {
-            // Pré-preenche nome do Google se disponível
-            const nome = session.user.user_metadata?.full_name ?? "";
-            setNomeCompleto(nome);
-            setStep("perfil");
-          }
-        }
-      },
-    );
-    return () => listener.subscription.unsubscribe();
+    init();
   }, []);
 
-  async function validarToken() {
-    const { data, error } = await supabase.rpc("validar_convite", {
-      p_token: token,
-    });
-    if (error || !data || data.length === 0) {
-      setMotivoInvalido("Link inválido ou não encontrado.");
-      setStep("invalido");
-      return;
-    }
-    const resultado = data[0];
-    if (!resultado.valido) {
-      setMotivoInvalido(resultado.motivo);
-      setStep("invalido");
-      return;
-    }
-    setConviteId(resultado.id);
-
-    // Verifica se já está logado
+  async function init() {
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (session) {
-      const { data: userDb } = await supabase
-        .from("users")
-        .select("nome_completo")
-        .eq("id", session.user.id)
-        .single();
-      if (userDb?.nome_completo) {
-        setStep("aguardando");
-      } else {
-        const nome = session.user.user_metadata?.full_name ?? "";
-        setNomeCompleto(nome);
-        setStep("perfil");
-      }
-    } else {
-      setStep("auth");
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      router.push("/login");
+      return;
     }
+    setAdminId(user.id);
+    await Promise.all([loadPedidos(), loadConvites()]);
+    setLoading(false);
   }
 
-  async function loginGoogle() {
-    setLoadingAuth(true);
-    // Salva token no localStorage para recuperar após redirect
-    localStorage.setItem("convite_token", token);
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/convite/${token}`,
-      },
+  async function loadPedidos() {
+    const { data } = await supabase
+      .from("pedidos_entrada")
+      .select("*, convites(token)")
+      .order("criado_em", { ascending: false });
+    setPedidos((data as Pedido[]) ?? []);
+  }
+
+  async function loadConvites() {
+    const { data } = await supabase
+      .from("convites")
+      .select("*")
+      .order("criado_em", { ascending: false });
+    setConvites(data ?? []);
+  }
+
+  async function criarConvite() {
+    if (!adminId) return;
+    setCriandoConvite(true);
+    const { data } = await supabase
+      .from("convites")
+      .insert({ criado_por: adminId, nome_destinatario: nomeConvite || null })
+      .select()
+      .single();
+    if (data) {
+      setNomeConvite("");
+      await loadConvites();
+      copiarLink(data.token);
+    }
+    setCriandoConvite(false);
+  }
+
+  function copiarLink(token: string) {
+    const url = `${window.location.origin}/convite/${token}`;
+    navigator.clipboard.writeText(url);
+    setLinkCopiado(token);
+    setTimeout(() => setLinkCopiado(null), 2500);
+  }
+
+  function compartilharWhatsApp(token: string, nome: string | null) {
+    const url = `${window.location.origin}/convite/${token}`;
+    const msg = `Olá${nome ? ` ${nome}` : ""}! ⚽ Você foi convidado para o Futebol Lar Cristão. Clique no link para se cadastrar: ${url}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+  }
+
+  async function aprovar(pedido: Pedido) {
+    if (!adminId) return;
+    setAcao(pedido.id + "aprovar");
+    await supabase.rpc("aprovar_pedido", {
+      p_pedido_id: pedido.id,
+      p_admin_id: adminId,
     });
+    await loadPedidos();
+    setAcao(null);
   }
 
-  async function loginEmail() {
-    if (!email || !senha) {
-      setErroAuth("Preencha email e senha.");
-      return;
-    }
-    setLoadingAuth(true);
-    setErroAuth(null);
-
-    if (modoAuth === "signup") {
-      const { error } = await supabase.auth.signUp({ email, password: senha });
-      if (error) {
-        setErroAuth(traduzirErro(error.message));
-        setLoadingAuth(false);
-        return;
-      }
-    } else {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password: senha,
-      });
-      if (error) {
-        setErroAuth(traduzirErro(error.message));
-        setLoadingAuth(false);
-        return;
-      }
-    }
-    setLoadingAuth(false);
-  }
-
-  async function salvarPerfil() {
-    if (!nomeCompleto.trim() || !telefone.trim()) {
-      setErroPerfil("Nome completo e celular são obrigatórios.");
-      return;
-    }
-    setSalvandoPerfil(true);
-    setErroPerfil(null);
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) {
-      setErroPerfil("Sessão expirada. Recarregue a página.");
-      return;
-    }
-
-    // Upsert na tabela users
-    const { error } = await supabase.from("users").upsert({
-      id: session.user.id,
-      nome_completo: nomeCompleto.trim(),
-      telefone: telefone.trim(),
-      posicao,
-      categoria,
-      tipo,
-      tipo_pagamento: tipo,
-      status: "pendente",
-      role: "jogador",
-      stars: 0,
-      mvp_count: 0,
-      is_admin: false,
-      is_mensalista: tipo === "mensalista",
+  async function rejeitar(pedido: Pedido) {
+    if (!adminId) return;
+    const motivo = prompt("Motivo da rejeição (opcional):");
+    setAcao(pedido.id + "rejeitar");
+    await supabase.rpc("rejeitar_pedido", {
+      p_pedido_id: pedido.id,
+      p_admin_id: adminId,
+      p_motivo: motivo ?? null,
     });
-
-    if (error) {
-      setErroPerfil("Erro ao salvar perfil. Tente novamente.");
-      setSalvandoPerfil(false);
-      return;
-    }
-
-    // Registra pedido de entrada vinculado ao convite
-    if (conviteId) {
-      await supabase.from("pedidos_entrada").insert({
-        convite_id: conviteId,
-        nome_completo: nomeCompleto.trim(),
-        telefone: telefone.trim(),
-        email: session.user.email,
-        posicao,
-        categoria,
-        tipo,
-        user_id: session.user.id,
-      });
-    }
-
-    // Notifica admin
-    await fetch("/api/notificar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        titulo: "⚽ Novo pedido de entrada!",
-        mensagem: `${nomeCompleto.split(" ")[0]} quer entrar no grupo. Toque para revisar.`,
-        url: `${window.location.origin}/admin/convites`,
-      }),
-    });
-
-    setSalvandoPerfil(false);
-    setStep("aguardando");
+    await loadPedidos();
+    setAcao(null);
   }
 
-  // ── RENDERS ──────────────────────────────────────
+  const pedidosFiltrados = pedidos.filter((p) => p.status === filtroStatus);
+  const pendentesCount = pedidos.filter((p) => p.status === "pendente").length;
 
-  if (step === "validando") {
-    return <Loading />;
-  }
-
-  if (step === "invalido") {
-    return (
-      <Screen>
-        <p className="text-5xl mb-4">🔒</p>
-        <h1 className="text-xl font-bold text-white mb-2">Link inválido</h1>
-        <p className="text-blue-300 text-sm">{motivoInvalido}</p>
-        <p className="text-blue-500 text-xs mt-4">
-          Peça um novo link ao administrador.
-        </p>
-      </Screen>
-    );
-  }
-
-  if (step === "aguardando") {
-    return (
-      <Screen>
-        <p className="text-6xl mb-4">🎉</p>
-        <h1 className="text-2xl font-bold text-white mb-2">Pedido enviado!</h1>
-        <p className="text-blue-200 text-sm leading-relaxed">
-          Seu cadastro foi registrado. O administrador irá analisar e confirmar
-          sua entrada no grupo em breve.
-        </p>
-        <p className="text-yellow-400 text-xs mt-4">
-          Fique de olho no seu WhatsApp! ⚽
-        </p>
-      </Screen>
-    );
-  }
-
-  if (step === "auth") {
-    return (
-      <div className="min-h-screen bg-[#080c20] text-white px-4 py-10 flex items-center justify-center">
-        <div className="w-full max-w-sm">
-          {/* Logo/Header */}
-          <div className="text-center mb-8">
-            <div
-              className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center text-3xl"
-              style={{
-                background:
-                  "linear-gradient(135deg, #c0143c, #e8b923, #1a4fc4)",
-              }}
-            >
-              ⚽
-            </div>
-            <h1 className="text-2xl font-bold">Futebol Lar Cristão</h1>
-            <p className="text-blue-300 text-sm mt-1">
-              Crie sua conta para entrar no grupo
-            </p>
-          </div>
-
-          {/* Google Button */}
+  return (
+    <div className="min-h-screen bg-green-950 text-white px-4 py-8">
+      <div className="max-w-lg mx-auto">
+        {/* Header */}
+        <div className="mb-6">
           <button
-            onClick={loginGoogle}
-            disabled={loadingAuth}
-            className="w-full flex items-center justify-center gap-3 bg-white text-gray-800 font-semibold py-3.5 rounded-xl mb-4 hover:bg-gray-100 transition-colors disabled:opacity-60 shadow-lg"
+            onClick={() => router.back()}
+            className="text-green-400 text-sm mb-3 flex items-center gap-1 hover:text-green-300"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-              />
-            </svg>
-            Entrar com Google
+            ← Voltar
           </button>
-
-          {/* Divider */}
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex-1 h-px bg-white/10" />
-            <span className="text-white/30 text-xs">ou</span>
-            <div className="flex-1 h-px bg-white/10" />
-          </div>
-
-          {/* Email/Senha */}
-          <div className="space-y-3">
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Seu e-mail"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-white/30 focus:outline-none focus:border-yellow-500/50"
-            />
-            <input
-              type="password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && loginEmail()}
-              placeholder="Senha"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-white/30 focus:outline-none focus:border-yellow-500/50"
-            />
-
-            {erroAuth && <p className="text-red-400 text-xs">{erroAuth}</p>}
-
-            <button
-              onClick={loginEmail}
-              disabled={loadingAuth}
-              className="w-full py-3.5 rounded-xl font-bold text-sm transition-colors disabled:opacity-50"
-              style={{
-                background: "linear-gradient(135deg, #c0143c, #8b0020)",
-              }}
-            >
-              {loadingAuth
-                ? "Aguarde..."
-                : modoAuth === "signup"
-                  ? "Criar conta"
-                  : "Entrar"}
-            </button>
-
-            <button
-              onClick={() => {
-                setModoAuth(modoAuth === "signup" ? "login" : "signup");
-                setErroAuth(null);
-              }}
-              className="w-full text-center text-white/40 text-xs hover:text-white/60 transition-colors py-1"
-            >
-              {modoAuth === "signup"
-                ? "Já tenho conta → Entrar"
-                : "Não tenho conta → Criar"}
-            </button>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold">Convites</h1>
+              <p className="text-green-400 text-sm">
+                Gerenciar entradas no grupo
+              </p>
+            </div>
+            {pendentesCount > 0 && (
+              <span className="bg-red-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+                {pendentesCount} pendente{pendentesCount !== 1 ? "s" : ""}
+              </span>
+            )}
           </div>
         </div>
-      </div>
-    );
-  }
 
-  if (step === "perfil") {
-    return (
-      <div className="min-h-screen bg-[#080c20] text-white px-4 py-10">
-        <div className="max-w-md mx-auto">
-          <div className="text-center mb-8">
-            <p className="text-3xl mb-2">👤</p>
-            <h1 className="text-xl font-bold">Complete seu perfil</h1>
-            <p className="text-blue-300 text-sm mt-1">
-              Quase lá! Preencha seus dados.
-            </p>
-          </div>
-
-          <div
-            className="space-y-4"
-            style={{
-              background: "rgba(255,255,255,0.03)",
-              borderRadius: 20,
-              padding: 20,
-              border: "1px solid rgba(255,255,255,0.07)",
-            }}
-          >
-            <Field label="Nome completo *">
-              <input
-                type="text"
-                value={nomeCompleto}
-                onChange={(e) => setNomeCompleto(e.target.value)}
-                placeholder="Seu nome completo"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-white/30 focus:outline-none focus:border-yellow-500/50"
-              />
-            </Field>
-
-            <Field label="WhatsApp *">
-              <input
-                type="tel"
-                value={telefone}
-                onChange={(e) => setTelefone(e.target.value)}
-                placeholder="(11) 99999-9999"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-white/30 focus:outline-none focus:border-yellow-500/50"
-              />
-            </Field>
-
-            <Field label="Posição">
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { v: "linha", l: "⚽ Linha" },
-                  { v: "goleiro", l: "🧤 Goleiro" },
-                ].map((p) => (
-                  <ToggleBtn
-                    key={p.v}
-                    active={posicao === p.v}
-                    onClick={() => setPosicao(p.v)}
-                    label={p.l}
-                  />
-                ))}
-              </div>
-            </Field>
-
-            <Field label="Categoria">
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { v: "membro", l: "👤 Membro" },
-                  { v: "convidado", l: "🎟️ Convidado" },
-                ].map((c) => (
-                  <ToggleBtn
-                    key={c.v}
-                    active={categoria === c.v}
-                    onClick={() => setCategoria(c.v)}
-                    label={c.l}
-                  />
-                ))}
-              </div>
-            </Field>
-
-            <Field label="Tipo de pagamento">
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { v: "avulso", l: "💳 Avulso" },
-                  { v: "mensalista", l: "📅 Mensalista" },
-                ].map((t) => (
-                  <ToggleBtn
-                    key={t.v}
-                    active={tipo === t.v}
-                    onClick={() => setTipo(t.v)}
-                    label={t.l}
-                  />
-                ))}
-              </div>
-            </Field>
-
-            {erroPerfil && <p className="text-red-400 text-sm">{erroPerfil}</p>}
-
+        {/* Abas */}
+        <div className="grid grid-cols-2 gap-2 mb-6">
+          {(
+            [
+              { key: "pedidos", label: "📋 Pedidos" },
+              { key: "convites", label: "🔗 Links" },
+            ] as { key: Aba; label: string }[]
+          ).map((a) => (
             <button
-              onClick={salvarPerfil}
-              disabled={salvandoPerfil}
-              className="w-full py-4 rounded-xl font-bold text-base transition-all disabled:opacity-50 mt-2"
-              style={{
-                background: "linear-gradient(135deg, #e8b923, #c9920a)",
-              }}
+              key={a.key}
+              onClick={() => setAba(a.key)}
+              className={`py-3 rounded-xl text-sm font-semibold border transition-colors ${
+                aba === a.key
+                  ? "bg-green-700 border-green-600 text-white"
+                  : "bg-green-900/30 border-green-800/40 text-green-400"
+              }`}
             >
-              {salvandoPerfil ? "Salvando..." : "Enviar pedido de entrada ⚽"}
+              {a.label}
             </button>
-          </div>
+          ))}
         </div>
+
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <div className="w-7 h-7 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <>
+            {/* ABA: PEDIDOS */}
+            {aba === "pedidos" && (
+              <div>
+                <div className="flex gap-2 mb-4">
+                  {(["pendente", "aprovado", "rejeitado"] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setFiltroStatus(s)}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        filtroStatus === s
+                          ? "bg-green-700 text-white"
+                          : "bg-green-900/30 text-green-500"
+                      }`}
+                    >
+                      {s === "pendente"
+                        ? "⏳ Pendentes"
+                        : s === "aprovado"
+                          ? "✅ Aprovados"
+                          : "❌ Rejeitados"}
+                    </button>
+                  ))}
+                </div>
+
+                {pedidosFiltrados.length === 0 ? (
+                  <div className="bg-green-900/20 rounded-2xl p-10 text-center text-green-600">
+                    Nenhum pedido {filtroStatus}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {pedidosFiltrados.map((p) => (
+                      <div
+                        key={p.id}
+                        className="bg-green-900/40 border border-green-800/40 rounded-2xl overflow-hidden"
+                      >
+                        <div className="p-4">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div>
+                              <p className="font-semibold text-white">
+                                {p.nome_completo}
+                              </p>
+                              <p className="text-green-500 text-xs">
+                                📱 {p.telefone}
+                              </p>
+                              {p.email && (
+                                <p className="text-green-600 text-xs">
+                                  ✉️ {p.email}
+                                </p>
+                              )}
+                            </div>
+                            <StatusBadge status={p.status} />
+                          </div>
+                          <div className="flex gap-2 flex-wrap mt-2">
+                            <Tag
+                              label={
+                                p.posicao === "goleiro"
+                                  ? "🧤 Goleiro"
+                                  : "⚽ Linha"
+                              }
+                            />
+                            <Tag
+                              label={
+                                p.categoria === "convidado"
+                                  ? "🎟️ Convidado"
+                                  : "👤 Membro"
+                              }
+                            />
+                            <Tag
+                              label={
+                                p.tipo === "mensalista"
+                                  ? "📅 Mensalista"
+                                  : "💳 Avulso"
+                              }
+                            />
+                          </div>
+                          <p className="text-green-700 text-xs mt-2">
+                            {formatData(p.criado_em)}
+                          </p>
+                          {p.observacao && (
+                            <p className="text-red-400 text-xs mt-1 italic">
+                              {p.observacao}
+                            </p>
+                          )}
+                        </div>
+
+                        {p.status === "pendente" && (
+                          <div className="border-t border-green-800/40 grid grid-cols-2">
+                            <button
+                              onClick={() => rejeitar(p)}
+                              disabled={!!acao}
+                              className="py-3 text-red-400 hover:bg-red-900/20 text-sm font-medium transition-colors border-r border-green-800/40 disabled:opacity-50"
+                            >
+                              {acao === p.id + "rejeitar"
+                                ? "..."
+                                : "✕ Rejeitar"}
+                            </button>
+                            <button
+                              onClick={() => aprovar(p)}
+                              disabled={!!acao}
+                              className="py-3 text-green-400 hover:bg-green-800/30 text-sm font-medium transition-colors disabled:opacity-50"
+                            >
+                              {acao === p.id + "aprovar" ? "..." : "✓ Aprovar"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ABA: LINKS */}
+            {aba === "convites" && (
+              <div>
+                {/* Criar novo link */}
+                <div className="bg-green-900/40 border border-green-800/40 rounded-2xl p-4 mb-4">
+                  <p className="text-green-400 text-sm mb-3">
+                    🔗 Criar novo link de convite
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={nomeConvite}
+                      onChange={(e) => setNomeConvite(e.target.value)}
+                      placeholder="Nome do convidado (opcional)"
+                      className="flex-1 bg-green-950 border border-green-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-green-700 focus:outline-none focus:border-green-500"
+                    />
+                    <button
+                      onClick={criarConvite}
+                      disabled={criandoConvite}
+                      className="bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                    >
+                      {criandoConvite ? "..." : "Criar"}
+                    </button>
+                  </div>
+                </div>
+
+                {convites.length === 0 ? (
+                  <div className="bg-green-900/20 rounded-2xl p-10 text-center text-green-600">
+                    Nenhum convite criado ainda
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {convites.map((c) => (
+                      <div
+                        key={c.id}
+                        className="bg-green-900/40 border border-green-800/40 rounded-xl p-4"
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-sm font-medium truncate">
+                              {c.nome_destinatario ?? "Convite geral"}
+                            </p>
+                            <p className="text-green-600 text-xs font-mono truncate">
+                              /convite/{c.token.slice(0, 16)}...
+                            </p>
+                          </div>
+                          <div className="flex-shrink-0">
+                            {c.usado ? (
+                              <span className="bg-green-800/60 text-green-400 text-xs px-2 py-0.5 rounded-full">
+                                ✓ Usado
+                              </span>
+                            ) : new Date(c.expira_em) < new Date() ? (
+                              <span className="bg-red-900/60 text-red-400 text-xs px-2 py-0.5 rounded-full">
+                                Expirado
+                              </span>
+                            ) : (
+                              <span className="bg-yellow-900/60 text-yellow-400 text-xs px-2 py-0.5 rounded-full">
+                                Ativo
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {!c.usado && new Date(c.expira_em) >= new Date() && (
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              onClick={() => copiarLink(c.token)}
+                              className="flex-1 py-2 rounded-lg bg-green-800/40 text-green-400 hover:bg-green-700/40 text-xs transition-colors"
+                            >
+                              {linkCopiado === c.token
+                                ? "✓ Copiado!"
+                                : "📋 Copiar link"}
+                            </button>
+                            <button
+                              onClick={() =>
+                                compartilharWhatsApp(
+                                  c.token,
+                                  c.nome_destinatario,
+                                )
+                              }
+                              className="flex-1 py-2 rounded-lg bg-green-800/40 text-green-400 hover:bg-green-700/40 text-xs transition-colors"
+                            >
+                              📲 WhatsApp
+                            </button>
+                          </div>
+                        )}
+                        <p className="text-green-700 text-xs mt-2">
+                          Expira em{" "}
+                          {new Date(c.expira_em).toLocaleDateString("pt-BR")}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </div>
-    );
-  }
-
-  return null;
-}
-
-// ── Sub-componentes ───────────────────────────────
-
-function Loading() {
-  return (
-    <div className="min-h-screen bg-[#080c20] flex items-center justify-center">
-      <div className="w-8 h-8 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
     </div>
   );
 }
 
-function Screen({ children }: { children: React.ReactNode }) {
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    pendente: "bg-yellow-800/60 text-yellow-300",
+    aprovado: "bg-green-800/60 text-green-300",
+    rejeitado: "bg-red-800/60 text-red-300",
+  };
+  const label: Record<string, string> = {
+    pendente: "⏳ Pendente",
+    aprovado: "✅ Aprovado",
+    rejeitado: "❌ Rejeitado",
+  };
   return (
-    <div className="min-h-screen bg-[#080c20] flex items-center justify-center px-4">
-      <div className="text-center max-w-sm">{children}</div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label className="text-white/40 text-xs mb-1.5 block">{label}</label>
-      {children}
-    </div>
-  );
-}
-
-function ToggleBtn({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`py-2.5 rounded-xl text-sm font-medium border transition-colors ${
-        active
-          ? "text-white border-yellow-500/60"
-          : "bg-white/5 border-white/10 text-white/50 hover:border-white/20"
-      }`}
-      style={
-        active
-          ? {
-              background: "linear-gradient(135deg, #c0143c44, #1a4fc444)",
-              borderColor: "#e8b923aa",
-            }
-          : {}
-      }
+    <span
+      className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${map[status]}`}
     >
-      {label}
-    </button>
+      {label[status] ?? status}
+    </span>
   );
 }
 
-function traduzirErro(msg: string): string {
-  if (msg.includes("already registered"))
-    return "Este email já está cadastrado. Tente entrar.";
-  if (msg.includes("Invalid login")) return "Email ou senha incorretos.";
-  if (msg.includes("Password should"))
-    return "Senha deve ter pelo menos 6 caracteres.";
-  return "Erro ao autenticar. Tente novamente.";
+function Tag({ label }: { label: string }) {
+  return (
+    <span className="bg-green-900/60 text-green-400 text-xs px-2 py-0.5 rounded-full">
+      {label}
+    </span>
+  );
+}
+
+function formatData(iso: string) {
+  return new Date(iso).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
