@@ -1,15 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
+import { supabase } from "@/lib/supabaseClient";
 
 // ─── Helpers ───────────────────────────────────────────────────
-function hojeEhDiaDoJogo(gameDate) {
+function hojeEhDiaDoJogo(gameDate: string | null): boolean {
   if (!gameDate) return false;
   const hoje = new Date();
   const jogo = new Date(gameDate);
@@ -20,7 +15,7 @@ function hojeEhDiaDoJogo(gameDate) {
   );
 }
 
-function registroAberto(gameDate) {
+function registroAberto(gameDate: string | null): boolean {
   if (!hojeEhDiaDoJogo(gameDate)) return false;
   const agora = new Date();
   const limite = new Date();
@@ -28,12 +23,12 @@ function registroAberto(gameDate) {
   return agora < limite;
 }
 
-function tempoRestante(gameDate) {
+function tempoRestante(gameDate: string | null): string | null {
   if (!hojeEhDiaDoJogo(gameDate)) return null;
   const agora = new Date();
   const limite = new Date();
   limite.setHours(13, 0, 0, 0);
-  const diff = limite - agora;
+  const diff = limite.getTime() - agora.getTime();
   if (diff <= 0) return null;
   const h = Math.floor(diff / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
@@ -42,7 +37,15 @@ function tempoRestante(gameDate) {
 }
 
 // ─── Componente contador de gols ───────────────────────────────
-function GolCounter({ value, onChange, disabled }) {
+function GolCounter({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  disabled: boolean;
+}) {
   return (
     <div className="flex items-center gap-3">
       <button
@@ -66,23 +69,38 @@ function GolCounter({ value, onChange, disabled }) {
   );
 }
 
+interface Game {
+  id: string;
+  data_jogo: string;
+}
+
+interface RankingItem {
+  gols: number;
+  users: { id: string; nome_completo: string; tipo: string } | null;
+}
+
+interface TemporadaItem {
+  user: { id: string; nome_completo: string; tipo: string } | null;
+  total: number;
+}
+
 // ─── Página principal ──────────────────────────────────────────
 export default function Artilheiros() {
-  const [game, setGame] = useState(null);
-  const [userId, setUserId] = useState(null);
+  const [game, setGame] = useState<Game | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [participou, setParticipou] = useState(false);
   const [meusgols, setMeusGols] = useState(0);
-  const [golsSalvos, setGolsSalvos] = useState(null); // null = ainda não registrou
-  const [ranking, setRanking] = useState([]);
-  const [rankingTemporada, setRankingTemporada] = useState([]);
+  const [golsSalvos, setGolsSalvos] = useState<number | null>(null);
+  const [ranking, setRanking] = useState<RankingItem[]>([]);
+  const [rankingTemporada, setRankingTemporada] = useState<TemporadaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [salvoOk, setSalvoOk] = useState(false);
   const [aberto, setAberto] = useState(false);
-  const [tempo, setTempo] = useState(null);
-  const [aba, setAba] = useState("partida"); // partida | temporada
-  const [editandoAdmin, setEditandoAdmin] = useState(null); // userId sendo editado pelo admin
+  const [tempo, setTempo] = useState<string | null>(null);
+  const [aba, setAba] = useState("partida");
+  const [editandoAdmin, setEditandoAdmin] = useState<string | null>(null);
   const [golsAdmin, setGolsAdmin] = useState(0);
 
   const init = useCallback(async () => {
@@ -104,13 +122,12 @@ export default function Artilheiros() {
       .single();
     setIsAdmin(userData?.role === "admin");
 
-    // Jogo mais recente
     const { data: games } = await supabase
       .from("games")
       .select("*")
       .order("data_jogo", { ascending: false })
       .limit(1);
-    const g = games?.[0];
+    const g = games?.[0] ?? null;
     setGame(g);
 
     if (!g) {
@@ -120,7 +137,6 @@ export default function Artilheiros() {
 
     setAberto(registroAberto(g.data_jogo));
 
-    // Verifica participação
     const { data: gp } = await supabase
       .from("game_players")
       .select("id")
@@ -130,7 +146,6 @@ export default function Artilheiros() {
       .single();
     setParticipou(!!gp);
 
-    // Meus gols nessa partida
     const { data: meuReg } = await supabase
       .from("gols_partida")
       .select("gols")
@@ -146,27 +161,32 @@ export default function Artilheiros() {
     setLoading(false);
   }, []);
 
-  async function fetchRankings(gameId) {
-    // Ranking da partida
+  async function fetchRankings(gameId: string) {
     const { data: partida } = await supabase
       .from("gols_partida")
-      .select("gols, users(id, name, tipo)")
+      .select("gols, users(id, nome_completo, tipo)")
       .eq("game_id", gameId)
       .gt("gols", 0)
       .order("gols", { ascending: false });
-    setRanking(partida || []);
+    setRanking((partida as RankingItem[]) || []);
 
-    // Ranking temporada (soma de todos os jogos)
     const { data: temporada } = await supabase
       .from("gols_partida")
-      .select("user_id, gols, users(id, name, tipo)")
+      .select("user_id, gols, users(id, nome_completo, tipo)")
       .gt("gols", 0);
 
-    const acumulado = {};
-    temporada?.forEach(({ user_id, gols, users }) => {
-      if (!acumulado[user_id]) acumulado[user_id] = { user: users, total: 0 };
-      acumulado[user_id].total += gols;
-    });
+    const acumulado: Record<string, TemporadaItem> = {};
+    temporada?.forEach(
+      (row: {
+        user_id: string;
+        gols: number;
+        users: TemporadaItem["user"];
+      }) => {
+        if (!acumulado[row.user_id])
+          acumulado[row.user_id] = { user: row.users, total: 0 };
+        acumulado[row.user_id].total += row.gols;
+      },
+    );
 
     const sorted = Object.values(acumulado).sort((a, b) => b.total - a.total);
     setRankingTemporada(sorted);
@@ -175,16 +195,12 @@ export default function Artilheiros() {
   async function salvarGols() {
     if (!game || !participou) return;
     setSalvando(true);
-
-    await supabase.from("gols_partida").upsert(
-      {
-        game_id: game.id,
-        user_id: userId,
-        gols: meusgols,
-      },
-      { onConflict: "game_id,user_id" },
-    );
-
+    await supabase
+      .from("gols_partida")
+      .upsert(
+        { game_id: game.id, user_id: userId, gols: meusgols },
+        { onConflict: "game_id,user_id" },
+      );
     setGolsSalvos(meusgols);
     setSalvoOk(true);
     setTimeout(() => setSalvoOk(false), 2000);
@@ -192,20 +208,18 @@ export default function Artilheiros() {
     setSalvando(false);
   }
 
-  async function salvarGolsAdmin(targetUserId) {
-    await supabase.from("gols_partida").upsert(
-      {
-        game_id: game.id,
-        user_id: targetUserId,
-        gols: golsAdmin,
-      },
-      { onConflict: "game_id,user_id" },
-    );
+  async function salvarGolsAdmin(targetUserId: string) {
+    if (!game) return;
+    await supabase
+      .from("gols_partida")
+      .upsert(
+        { game_id: game.id, user_id: targetUserId, gols: golsAdmin },
+        { onConflict: "game_id,user_id" },
+      );
     setEditandoAdmin(null);
     await fetchRankings(game.id);
   }
 
-  // Timer regressivo
   useEffect(() => {
     const interval = setInterval(() => {
       if (game) {
@@ -221,7 +235,7 @@ export default function Artilheiros() {
   }, [init]);
 
   const medalhas = ["🥇", "🥈", "🥉"];
-  const listaAtual =
+  const listaAtual: RankingItem[] =
     aba === "partida"
       ? ranking
       : rankingTemporada.map((r) => ({ users: r.user, gols: r.total }));
@@ -239,7 +253,6 @@ export default function Artilheiros() {
         .ball-bg { background: radial-gradient(circle at 30% 30%, #1a2e0f, #0c0f0a); }
       `}</style>
 
-      {/* Header */}
       <header className="ball-bg border-b border-white/5 sticky top-0 z-30 backdrop-blur">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
@@ -265,7 +278,6 @@ export default function Artilheiros() {
             Carregando...
           </div>
         )}
-
         {!loading && !game && (
           <div className="text-center py-20 text-zinc-600">
             Nenhuma partida encontrada.
@@ -274,14 +286,9 @@ export default function Artilheiros() {
 
         {!loading && game && (
           <>
-            {/* Card de registro de gols */}
             {participou && (
               <div
-                className={`rounded-3xl border p-6 space-y-4 ${
-                  aberto
-                    ? "border-emerald-500/30 bg-emerald-500/5"
-                    : "border-zinc-800 bg-zinc-900/50"
-                }`}
+                className={`rounded-3xl border p-6 space-y-4 ${aberto ? "border-emerald-500/30 bg-emerald-500/5" : "border-zinc-800 bg-zinc-900/50"}`}
               >
                 <div className="flex items-start justify-between">
                   <div>
@@ -303,7 +310,6 @@ export default function Artilheiros() {
                     </div>
                   )}
                 </div>
-
                 <div className="flex items-center justify-between">
                   <GolCounter
                     value={meusgols}
@@ -328,7 +334,6 @@ export default function Artilheiros() {
                         : "Salvar"}
                   </button>
                 </div>
-
                 {aberto && meusgols !== golsSalvos && (
                   <p className="text-amber-500/70 text-xs">
                     ⚠️ Você tem alterações não salvas
@@ -343,7 +348,6 @@ export default function Artilheiros() {
               </div>
             )}
 
-            {/* Abas: partida / temporada */}
             <div className="flex gap-2">
               {[
                 { key: "partida", label: "🏟️ Partida atual" },
@@ -363,7 +367,6 @@ export default function Artilheiros() {
               ))}
             </div>
 
-            {/* Ranking */}
             <div className="space-y-2">
               {listaAtual.length === 0 && (
                 <div className="text-center py-10 text-zinc-600 text-sm">
@@ -374,7 +377,7 @@ export default function Artilheiros() {
               )}
 
               {listaAtual.map((item, idx) => {
-                const nome = item.users?.name || "Jogador";
+                const nome = item.users?.nome_completo || "Jogador";
                 const gols = item.gols;
                 const isEuMesmo = item.users?.id === userId;
                 const maxGols = listaAtual[0]?.gols || 1;
@@ -392,16 +395,12 @@ export default function Artilheiros() {
                     }`}
                     style={{ animationDelay: `${idx * 0.04}s` }}
                   >
-                    {/* Barra de fundo proporcional */}
                     <div
-                      className={`absolute inset-y-0 left-0 opacity-10 transition-all duration-700 ${
-                        idx === 0 ? "bg-amber-400" : "bg-emerald-500"
-                      }`}
+                      className={`absolute inset-y-0 left-0 opacity-10 transition-all duration-700 ${idx === 0 ? "bg-amber-400" : "bg-emerald-500"}`}
                       style={{ width: `${pct}%` }}
                     />
 
                     <div className="relative flex items-center gap-3 px-4 py-3.5">
-                      {/* Medalha ou posição */}
                       <span className="text-lg w-7 text-center">
                         {idx < 3 ? (
                           medalhas[idx]
@@ -412,7 +411,6 @@ export default function Artilheiros() {
                         )}
                       </span>
 
-                      {/* Avatar */}
                       <div
                         className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${
                           idx === 0
@@ -423,7 +421,6 @@ export default function Artilheiros() {
                         {nome[0].toUpperCase()}
                       </div>
 
-                      {/* Nome */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="text-white text-sm font-semibold truncate">
@@ -440,7 +437,6 @@ export default function Artilheiros() {
                         </p>
                       </div>
 
-                      {/* Gols + edição admin */}
                       <div className="flex items-center gap-3">
                         {isAdmin &&
                         aba === "partida" &&
@@ -452,7 +448,9 @@ export default function Artilheiros() {
                               disabled={false}
                             />
                             <button
-                              onClick={() => salvarGolsAdmin(item.users.id)}
+                              onClick={() =>
+                                item.users && salvarGolsAdmin(item.users.id)
+                              }
                               className="px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-xs"
                             >
                               ✓
@@ -479,7 +477,7 @@ export default function Artilheiros() {
                             {isAdmin && aba === "partida" && (
                               <button
                                 onClick={() => {
-                                  setEditandoAdmin(item.users.id);
+                                  setEditandoAdmin(item.users?.id ?? null);
                                   setGolsAdmin(gols);
                                 }}
                                 className="text-zinc-600 hover:text-zinc-300 text-xs transition-colors"
@@ -497,11 +495,10 @@ export default function Artilheiros() {
               })}
             </div>
 
-            {/* Admin: adicionar gol para jogador não listado */}
             {isAdmin && aba === "partida" && (
               <AdminAdicionarGol
                 game={game}
-                jogadoresComGol={ranking.map((r) => r.users?.id)}
+                jogadoresComGol={ranking.map((r) => r.users?.id ?? "")}
                 onSalvo={() => fetchRankings(game.id)}
               />
             )}
@@ -513,37 +510,45 @@ export default function Artilheiros() {
 }
 
 // ─── Admin: adicionar gols a jogador não listado ───────────────
-function AdminAdicionarGol({ game, jogadoresComGol, onSalvo }) {
+function AdminAdicionarGol({
+  game,
+  jogadoresComGol,
+  onSalvo,
+}: {
+  game: Game;
+  jogadoresComGol: string[];
+  onSalvo: () => void;
+}) {
   const [aberto, setAberto] = useState(false);
-  const [jogadores, setJogadores] = useState([]);
+  const [jogadores, setJogadores] = useState<
+    { user_id: string; users: { id: string; nome_completo: string } | null }[]
+  >([]);
   const [selecionado, setSelecionado] = useState("");
   const [gols, setGols] = useState(0);
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
-    async function fetch() {
+    async function fetchJogadores() {
       const { data } = await supabase
         .from("game_players")
-        .select("user_id, users(id, name)")
+        .select("user_id, users(id, nome_completo)")
         .eq("game_id", game.id)
         .eq("status", "confirmado");
       const semGol = data?.filter((p) => !jogadoresComGol.includes(p.user_id));
-      setJogadores(semGol || []);
+      setJogadores((semGol as typeof jogadores) || []);
     }
-    if (aberto) fetch();
+    if (aberto) fetchJogadores();
   }, [aberto, game.id, jogadoresComGol]);
 
   async function salvar() {
     if (!selecionado || gols <= 0) return;
     setSalvando(true);
-    await supabase.from("gols_partida").upsert(
-      {
-        game_id: game.id,
-        user_id: selecionado,
-        gols,
-      },
-      { onConflict: "game_id,user_id" },
-    );
+    await supabase
+      .from("gols_partida")
+      .upsert(
+        { game_id: game.id, user_id: selecionado, gols },
+        { onConflict: "game_id,user_id" },
+      );
     setSalvando(false);
     setAberto(false);
     setSelecionado("");
@@ -573,7 +578,7 @@ function AdminAdicionarGol({ game, jogadoresComGol, onSalvo }) {
         <option value="">Selecione o jogador...</option>
         {jogadores.map((j) => (
           <option key={j.user_id} value={j.user_id}>
-            {j.users?.name}
+            {j.users?.nome_completo}
           </option>
         ))}
       </select>
