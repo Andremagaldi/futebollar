@@ -1,14 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-// ─── Supabase client ───────────────────────────────────────────────────────────
-// Substitua pelas suas variáveis de ambiente
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-);
+import { supabase } from "@/lib/supabaseClient";
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const VALOR_MENSALISTA = 50; // R$ por partida
@@ -561,3 +554,5 @@ export default function FinanceiroPainel() {
     </div>
   );
 }
+
+
