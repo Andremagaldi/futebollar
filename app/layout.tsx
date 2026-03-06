@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Providers from './providers';
+import Providers from "./providers";
+import SplashWrapper from "@/components/SplashWrapper";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,9 +28,10 @@ export default function RootLayout({
     <html lang="pt-BR" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        style={{ backgroundColor: "#0F172A" }}
       >
         <Providers>
-          {children}
+          <SplashWrapper>{children}</SplashWrapper>
         </Providers>
       </body>
     </html>
