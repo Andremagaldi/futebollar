@@ -9,13 +9,30 @@ interface SplashScreenProps {
 
 export default function SplashScreen({ onFinish }: SplashScreenProps) {
   const [visible, setVisible] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setVisible(false);
-    }, 4000);
+    // Detecta se é mobile pela largura da tela
+    setIsMobile(window.innerWidth <= 768);
+
+    const timer = setTimeout(() => setVisible(false), 4000);
     return () => clearTimeout(timer);
   }, []);
+
+  // No desktop, chama onFinish imediatamente sem mostrar nada
+  useEffect(() => {
+    if (
+      isMobile === false &&
+      typeof window !== "undefined" &&
+      window.innerWidth > 768
+    ) {
+      onFinish();
+    }
+  }, [isMobile]);
+
+  // Enquanto não sabe se é mobile (SSR), não renderiza nada
+  if (typeof window === "undefined") return null;
+  if (window.innerWidth > 768) return null;
 
   return (
     <AnimatePresence onExitComplete={onFinish}>
@@ -36,7 +53,7 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
           }}
         >
           <video
-            src="/splash-video.mp4"
+            src="/splash-video-mobile.mp4"
             autoPlay
             muted
             loop
@@ -46,7 +63,7 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
               inset: 0,
               width: "100%",
               height: "100%",
-              objectFit: "cover",
+              objectFit: "contain",
             }}
           />
         </motion.div>
