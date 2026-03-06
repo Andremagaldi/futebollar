@@ -36,6 +36,10 @@ export default function ConvitePage() {
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === "SIGNED_IN" && session) {
+          // Recupera conviteId do localStorage se perdeu após redirect Google
+          const savedConviteId = localStorage.getItem("convite_id");
+          if (savedConviteId) setConviteId(savedConviteId);
+
           const { data: user } = await supabase
             .from("users")
             .select("nome_completo")
@@ -73,7 +77,9 @@ export default function ConvitePage() {
       return;
     }
 
+    // Persiste no localStorage para sobreviver ao redirect do Google OAuth
     setConviteId(resultado.id);
+    localStorage.setItem("convite_id", resultado.id);
 
     const {
       data: { session },
@@ -145,10 +151,12 @@ export default function ConvitePage() {
     } = await supabase.auth.getSession();
     if (!session) {
       setErroPerfil("Sessão expirada. Recarregue a página.");
+      setSalvandoPerfil(false);
       return;
     }
 
-    const { error } = await supabase.from("users").upsert({
+    // Upsert usuário
+    const { error: userError } = await supabase.from("users").upsert({
       id: session.user.id,
       nome_completo: nomeCompleto.trim(),
       telefone: telefone.trim(),
@@ -164,34 +172,52 @@ export default function ConvitePage() {
       is_mensalista: tipo === "mensalista",
     });
 
-    if (error) {
-      setErroPerfil("Erro ao salvar perfil. Tente novamente.");
+    if (userError) {
+      setErroPerfil("Erro ao salvar perfil: " + userError.message);
       setSalvandoPerfil(false);
       return;
     }
 
-    if (conviteId) {
-      await supabase.from("pedidos_entrada").insert({
-        convite_id: conviteId,
-        nome_completo: nomeCompleto.trim(),
-        telefone: telefone.trim(),
-        email: session.user.email,
-        posicao,
-        categoria,
-        tipo,
-        user_id: session.user.id,
-      });
+    // Recupera conviteId do localStorage como fallback
+    const cId = conviteId ?? localStorage.getItem("convite_id");
+
+    if (cId) {
+      const { error: pedidoError } = await supabase
+        .from("pedidos_entrada")
+        .insert({
+          convite_id: cId,
+          nome_completo: nomeCompleto.trim(),
+          telefone: telefone.trim(),
+          email: session.user.email,
+          posicao,
+          categoria,
+          tipo,
+          user_id: session.user.id,
+        });
+
+      if (pedidoError) {
+        console.error("Erro ao salvar pedido:", pedidoError.message);
+        // Não bloqueia o fluxo — só loga o erro
+      }
     }
 
-    await fetch("/api/notificar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        titulo: "⚽ Novo pedido de entrada!",
-        mensagem: `${nomeCompleto.split(" ")[0]} quer entrar no grupo. Toque para revisar.`,
-        url: `${window.location.origin}/admin/convites`,
-      }),
-    });
+    // Notifica admin
+    try {
+      await fetch("/api/notificar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo: "⚽ Novo pedido de entrada!",
+          mensagem: `${nomeCompleto.split(" ")[0]} quer entrar no grupo. Toque para revisar.`,
+          url: `${window.location.origin}/admin/convites`,
+        }),
+      });
+    } catch {
+      // Notificação falhou mas não bloqueia
+    }
+
+    // Limpa localStorage
+    localStorage.removeItem("convite_id");
 
     setSalvandoPerfil(false);
     setStep("aguardando");
@@ -262,7 +288,6 @@ export default function ConvitePage() {
             </p>
           </div>
 
-          {/* Google */}
           <button
             onClick={loginGoogle}
             disabled={loadingAuth}
@@ -317,7 +342,7 @@ export default function ConvitePage() {
             <button
               onClick={loginEmail}
               disabled={loadingAuth}
-              className="w-full py-3.5 rounded-xl font-bold text-sm transition-colors disabled:opacity-50 text-white"
+              className="w-full py-3.5 rounded-xl font-bold text-sm disabled:opacity-50 text-white"
               style={{
                 background: "linear-gradient(135deg, #c0143c, #8b0020)",
               }}
