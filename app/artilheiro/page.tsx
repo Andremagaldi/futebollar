@@ -74,24 +74,13 @@ interface Game {
   data_jogo: string;
 }
 
-interface UserProfile {
-  id: string;
-  nome_completo: string;
-  tipo: string;
-}
-
 interface RankingItem {
   gols: number;
-  users: UserProfile | null;
-}
-
-interface RankingRow {
-  gols: number;
-  users: UserProfile | UserProfile[] | null;
+  users: { id: string; nome_completo: string; tipo: string } | null;
 }
 
 interface TemporadaItem {
-  user: UserProfile | null;
+  user: { id: string; nome_completo: string; tipo: string } | null;
   total: number;
 }
 
@@ -179,12 +168,7 @@ export default function Artilheiros() {
       .eq("game_id", gameId)
       .gt("gols", 0)
       .order("gols", { ascending: false });
-    const rankingPartida: RankingItem[] =
-      (partida as RankingRow[] | null)?.map((row) => ({
-        gols: row.gols,
-        users: Array.isArray(row.users) ? row.users[0] ?? null : row.users,
-      })) ?? [];
-    setRanking(rankingPartida);
+    setRanking((partida as RankingItem[]) || []);
 
     const { data: temporada } = await supabase
       .from("gols_partida")
@@ -196,11 +180,10 @@ export default function Artilheiros() {
       (row: {
         user_id: string;
         gols: number;
-        users: UserProfile | UserProfile[] | null;
+        users: TemporadaItem["user"];
       }) => {
-        const user = Array.isArray(row.users) ? row.users[0] ?? null : row.users;
         if (!acumulado[row.user_id])
-          acumulado[row.user_id] = { user, total: 0 };
+          acumulado[row.user_id] = { user: row.users, total: 0 };
         acumulado[row.user_id].total += row.gols;
       },
     );
@@ -538,7 +521,7 @@ function AdminAdicionarGol({
 }) {
   const [aberto, setAberto] = useState(false);
   const [jogadores, setJogadores] = useState<
-    { user_id: string; users: Pick<UserProfile, "id" | "nome_completo"> | null }[]
+    { user_id: string; users: { id: string; nome_completo: string } | null }[]
   >([]);
   const [selecionado, setSelecionado] = useState("");
   const [gols, setGols] = useState(0);
@@ -551,14 +534,8 @@ function AdminAdicionarGol({
         .select("user_id, users(id, nome_completo)")
         .eq("game_id", game.id)
         .eq("status", "confirmado");
-      const semGol =
-        data
-          ?.filter((p) => !jogadoresComGol.includes(p.user_id))
-          .map((p) => ({
-            user_id: p.user_id as string,
-            users: Array.isArray(p.users) ? p.users[0] ?? null : p.users,
-          })) ?? [];
-      setJogadores(semGol);
+      const semGol = data?.filter((p) => !jogadoresComGol.includes(p.user_id));
+      setJogadores((semGol as typeof jogadores) || []);
     }
     if (aberto) fetchJogadores();
   }, [aberto, game.id, jogadoresComGol]);
