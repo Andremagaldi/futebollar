@@ -1,24 +1,43 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseClient";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-);
+interface Game {
+  id: string;
+  game_date: string;
+  votacao_encerrada: boolean | null;
+  mvp_user_id: string | null;
+}
+
+interface PlayerUser {
+  id: string;
+  name: string;
+  tipo: string;
+  stars: number | null;
+}
+
+interface Player {
+  id: string;
+  user_id: string;
+  users: PlayerUser | null;
+}
+
+interface PlayerRow extends Omit<Player, "users"> {
+  users: PlayerUser | PlayerUser[] | null;
+}
 
 export default function VotacaoMVP() {
-  const [game, setGame] = useState(null);
-  const [jogadores, setJogadores] = useState([]);
-  const [votos, setVotos] = useState({});
-  const [meuVoto, setMeuVoto] = useState(null);
-  const [userId, setUserId] = useState(null);
+  const [game, setGame] = useState<Game | null>(null);
+  const [jogadores, setJogadores] = useState<Player[]>([]);
+  const [votos, setVotos] = useState<Record<string, number>>({});
+  const [meuVoto, setMeuVoto] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [participou, setParticipou] = useState(false);
   const [loading, setLoading] = useState(true);
   const [votando, setVotando] = useState(false);
   const [encerrada, setEncerrada] = useState(false);
-  const [mvpOficial, setMvpOficial] = useState(null);
+  const [mvpOficial, setMvpOficial] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -57,7 +76,7 @@ export default function VotacaoMVP() {
       setLoading(false);
       return;
     }
-    setGame(latestGame);
+    setGame(latestGame as Game);
     setEncerrada(latestGame.votacao_encerrada || false);
     setMvpOficial(latestGame.mvp_user_id || null);
 
@@ -67,10 +86,15 @@ export default function VotacaoMVP() {
       .select("*, users(id, name, tipo, stars)")
       .eq("game_id", latestGame.id)
       .eq("status", "confirmado");
-    setJogadores(players || []);
+    const jogadoresNormalizados =
+      (players as PlayerRow[] | null)?.map((player) => ({
+        ...player,
+        users: Array.isArray(player.users) ? player.users[0] ?? null : player.users,
+      })) ?? [];
+    setJogadores(jogadoresNormalizados);
 
     // Verifica se o usuário participou
-    const participou = players?.some((p) => p.user_id === user.id);
+    const participou = jogadoresNormalizados.some((p) => p.user_id === user.id);
     setParticipou(participou);
 
     // Busca todos os votos do jogo
@@ -79,8 +103,8 @@ export default function VotacaoMVP() {
       .select("voted_for")
       .eq("game_id", latestGame.id);
 
-    const contagem = {};
-    votosData?.forEach((v) => {
+    const contagem: Record<string, number> = {};
+    votosData?.forEach((v: { voted_for: string }) => {
       contagem[v.voted_for] = (contagem[v.voted_for] || 0) + 1;
     });
     setVotos(contagem);
@@ -97,8 +121,9 @@ export default function VotacaoMVP() {
     setLoading(false);
   }
 
-  async function votar(votedForId) {
-    if (!participou || meuVoto || encerrada || votedForId === userId) return;
+  async function votar(votedForId: string) {
+    if (!game || !userId || !participou || meuVoto || encerrada || votedForId === userId)
+      return;
     setVotando(true);
 
     const { error } = await supabase.from("mvp_votes").insert({
@@ -118,6 +143,7 @@ export default function VotacaoMVP() {
   }
 
   async function encerrarVotacao() {
+    if (!game) return;
     // Encontra o MVP (mais votos)
     const mvpId = Object.entries(votos).sort((a, b) => b[1] - a[1])[0]?.[0];
     await supabase

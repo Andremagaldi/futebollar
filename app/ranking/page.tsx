@@ -1,15 +1,28 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseClient";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-);
+interface Jogador {
+  id: string;
+  name: string;
+  tipo: string;
+  stars: number | null;
+  mvp_count: number | null;
+}
 
-function StarRating({ value, onChange, readonly = false }) {
-  const [hovered, setHovered] = useState(null);
+type Ordenacao = "stars_desc" | "stars_asc" | "mvp_desc" | "nome";
+
+function StarRating({
+  value,
+  onChange,
+  readonly = false,
+}: {
+  value: number;
+  onChange?: (value: number) => void;
+  readonly?: boolean;
+}) {
+  const [hovered, setHovered] = useState<number | null>(null);
   const display = hovered ?? value;
   return (
     <div className="flex gap-0.5">
@@ -32,11 +45,11 @@ function StarRating({ value, onChange, readonly = false }) {
 }
 
 export default function RankingJogadores() {
-  const [jogadores, setJogadores] = useState([]);
+  const [jogadores, setJogadores] = useState<Jogador[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(null);
+  const [saving, setSaving] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
-  const [ordem, setOrdem] = useState("stars_desc");
+  const [ordem, setOrdem] = useState<Ordenacao>("stars_desc");
 
   async function fetchJogadores() {
     setLoading(true);
@@ -44,14 +57,14 @@ export default function RankingJogadores() {
       .from("users")
       .select("id, name, tipo, stars, mvp_count")
       .order("stars", { ascending: false });
-    setJogadores(data || []);
+    setJogadores((data as Jogador[] | null) || []);
     setLoading(false);
   }
 
-  async function updateStars(userId, stars) {
+  async function updateStars(userId: string, stars: number) {
     setSaving(userId);
     await supabase.from("users").update({ stars }).eq("id", userId);
-    setJogadores((prev) =>
+    setJogadores((prev: Jogador[]) =>
       prev.map((j) => (j.id === userId ? { ...j, stars } : j)),
     );
     setSaving(null);
@@ -67,7 +80,7 @@ export default function RankingJogadores() {
       if (ordem === "stars_desc") return (b.stars || 0) - (a.stars || 0);
       if (ordem === "stars_asc") return (a.stars || 0) - (b.stars || 0);
       if (ordem === "mvp_desc") return (b.mvp_count || 0) - (a.mvp_count || 0);
-      if (ordem === "nome") return a.name?.localeCompare(b.name);
+      if (ordem === "nome") return (a.name || "").localeCompare(b.name || "");
       return 0;
     });
 
@@ -159,7 +172,7 @@ export default function RankingJogadores() {
           />
           <select
             value={ordem}
-            onChange={(e) => setOrdem(e.target.value)}
+            onChange={(e) => setOrdem(e.target.value as Ordenacao)}
             className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none"
           >
             <option value="stars_desc">⭐ Mais estrelas</option>
@@ -245,3 +258,5 @@ export default function RankingJogadores() {
     </div>
   );
 }
+
+

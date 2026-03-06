@@ -22,6 +22,10 @@ type Player = {
   } | null;
 };
 
+type PlayerRow = Omit<Player, "users"> & {
+  users: { nome_completo: string } | { nome_completo: string }[] | null;
+};
+
 type MyEntry = {
   id: string;
   status: "confirmado" | "espera";
@@ -69,7 +73,13 @@ export default function ListaPage() {
         .eq("game_id", currentGame.id)
         .order("ordem_entrada", { ascending: true });
 
-      setPlayers(playersData || []);
+      const normalizedPlayers =
+        (playersData as PlayerRow[] | null)?.map((player) => ({
+          ...player,
+          users: Array.isArray(player.users) ? player.users[0] ?? null : player.users,
+        })) ?? [];
+
+      setPlayers(normalizedPlayers);
 
       const {
         data: { user },

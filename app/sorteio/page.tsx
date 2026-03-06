@@ -7,10 +7,25 @@ import { sortearTimes } from "@/lib/sortearTimes";
 
 type Player = {
   id: string;
-  users: {
-    nome_completo: string;
-    posicao: string;
-  } | null;
+  nome_completo: string;
+  estrelas: number;
+  posicao: string;
+};
+
+type PlayerRow = {
+  user_id: string;
+  users:
+    | {
+        nome_completo: string;
+        posicao: string;
+        stars: number;
+      }
+    | {
+        nome_completo: string;
+        posicao: string;
+        stars: number;
+      }[]
+    | null;
 };
 
 type Time = {
@@ -67,10 +82,12 @@ export default function SorteioPage() {
           .from("times_sorteados")
           .select(
             `
+            user_id,
             nome_time,
             users (
               nome_completo,
-              posicao
+              posicao,
+              stars
             )
           `,
           )
@@ -84,8 +101,10 @@ export default function SorteioPage() {
           }
 
           agrupados[item.nome_time].push({
-            id: crypto.randomUUID(),
-            users: item.users,
+            id: item.user_id ?? crypto.randomUUID(),
+            nome_completo: item.users?.nome_completo ?? "Jogador",
+            posicao: item.users?.posicao ?? "linha",
+            estrelas: item.users?.stars ?? 0,
           });
         });
 
@@ -101,17 +120,32 @@ export default function SorteioPage() {
           .from("game_players")
           .select(
             `
-            id,
+            user_id,
             users (
               nome_completo,
-              posicao
+              posicao,
+              stars
             )
           `,
           )
           .eq("game_id", game.id)
           .eq("status", "confirmado");
 
-        setPlayers(jogadores || []);
+        const jogadoresNormalizados =
+          (jogadores as PlayerRow[] | null)?.map((jogador) => ({
+            id: jogador.user_id,
+            nome_completo: Array.isArray(jogador.users)
+              ? (jogador.users[0]?.nome_completo ?? "Jogador")
+              : (jogador.users?.nome_completo ?? "Jogador"),
+            posicao: Array.isArray(jogador.users)
+              ? (jogador.users[0]?.posicao ?? "linha")
+              : (jogador.users?.posicao ?? "linha"),
+            estrelas: Array.isArray(jogador.users)
+              ? (jogador.users[0]?.stars ?? 0)
+              : (jogador.users?.stars ?? 0),
+          })) ?? [];
+
+        setPlayers(jogadoresNormalizados);
       }
 
       setLoading(false);
@@ -180,7 +214,7 @@ export default function SorteioPage() {
             <ul>
               {time.jogadores.map((j) => (
                 <li key={j.id}>
-                  {j.users?.nome_completo} ({j.users?.posicao})
+                  {j.nome_completo} ({j.posicao})
                 </li>
               ))}
             </ul>

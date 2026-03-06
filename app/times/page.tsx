@@ -15,7 +15,21 @@ type TeamPlayer = {
   users: {
     nome_completo: string;
     posicao: string;
-  };
+  } | null;
+};
+
+type TeamPlayerRow = {
+  team_id: string;
+  users:
+    | {
+        nome_completo: string;
+        posicao: string;
+      }
+    | {
+        nome_completo: string;
+        posicao: string;
+      }[]
+    | null;
 };
 
 export default function TimesPage() {
@@ -60,7 +74,13 @@ export default function TimesPage() {
         )
         .in("team_id", teamsData?.map((t) => t.id) || []);
 
-      setPlayers(playersData || []);
+      const normalizedPlayers =
+        (playersData as TeamPlayerRow[] | null)?.map((player) => ({
+          team_id: player.team_id,
+          users: Array.isArray(player.users) ? player.users[0] ?? null : player.users,
+        })) ?? [];
+
+      setPlayers(normalizedPlayers);
 
       setLoading(false);
     };
@@ -83,11 +103,11 @@ export default function TimesPage() {
           const teamPlayers = players.filter((p) => p.team_id === team.id);
 
           const linha = teamPlayers.filter(
-            (p) => p.users.posicao !== "goleiro",
+            (p) => p.users?.posicao !== "goleiro",
           );
 
           const goleiro = teamPlayers.find(
-            (p) => p.users.posicao === "goleiro",
+            (p) => p.users?.posicao === "goleiro",
           );
 
           return (
@@ -104,14 +124,14 @@ export default function TimesPage() {
 
               {goleiro && (
                 <p>
-                  🥅 <strong>Goleiro:</strong> {goleiro.users.nome_completo}
+                  🥅 <strong>Goleiro:</strong> {goleiro.users?.nome_completo}
                 </p>
               )}
 
               <ul>
                 {linha.map((player) => (
-                  <li key={player.users.nome_completo}>
-                    {player.users.nome_completo}
+                  <li key={player.users?.nome_completo}>
+                    {player.users?.nome_completo}
                   </li>
                 ))}
               </ul>

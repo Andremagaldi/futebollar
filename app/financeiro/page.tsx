@@ -1,7 +1,32 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { supabase } from "@/lib/supabaseClient";
+
+interface FinanceUser {
+  id: string;
+  name: string;
+  email: string;
+  tipo: string;
+}
+
+interface GamePlayer {
+  id: string;
+  game_id: string;
+  user_id: string;
+  status: string;
+  payment_status: string;
+  multa_aplicada: boolean;
+  position: number | null;
+  users: FinanceUser | null;
+}
+
+interface GameRow {
+  id: string;
+  game_date: string;
+  total_players: number | null;
+  total_arrecadado: number | null;
+}
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const VALOR_MENSALISTA = 50; // R$ por partida
@@ -9,24 +34,24 @@ const VALOR_AVULSO = 30; // R$ por partida
 const MULTA_PERCENTUAL = 0.2; // 20%
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
-function formatCurrency(value) {
+function formatCurrency(value: number | null | undefined) {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
   }).format(value || 0);
 }
 
-function formatDate(dateStr) {
+function formatDate(dateStr: string | null | undefined) {
   if (!dateStr) return "—";
   return new Date(dateStr).toLocaleDateString("pt-BR");
 }
 
 // ─── Hook principal de dados ───────────────────────────────────────────────────
 function useFinanceiroData() {
-  const [jogadores, setJogadores] = useState([]);
-  const [games, setGames] = useState([]);
+  const [jogadores, setJogadores] = useState<GamePlayer[]>([]);
+  const [games, setGames] = useState<GameRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [semanaAtual, setSemanaAtual] = useState(null);
+  const [semanaAtual, setSemanaAtual] = useState<GameRow | null>(null);
 
   async function fetchData() {
     setLoading(true);
@@ -39,8 +64,8 @@ function useFinanceiroData() {
         .limit(8);
 
       const latestGame = gamesData?.[0];
-      setSemanaAtual(latestGame);
-      setGames(gamesData || []);
+      setSemanaAtual((latestGame as GameRow | null) ?? null);
+      setGames((gamesData as GameRow[] | null) ?? []);
 
       if (!latestGame) {
         setJogadores([]);
@@ -65,7 +90,17 @@ function useFinanceiroData() {
         .eq("game_id", latestGame.id)
         .order("position", { ascending: true });
 
-      setJogadores(playersData || []);
+      const jogadoresNormalizados =
+        (playersData as
+          | (Omit<GamePlayer, "users"> & {
+              users: FinanceUser | FinanceUser[] | null;
+            })[]
+          | null)
+          ?.map((j) => ({
+            ...j,
+            users: Array.isArray(j.users) ? j.users[0] ?? null : j.users,
+          })) ?? [];
+      setJogadores(jogadoresNormalizados);
     } catch (err) {
       console.error("Erro ao buscar dados:", err);
     } finally {
@@ -73,7 +108,7 @@ function useFinanceiroData() {
     }
   }
 
-  async function togglePagamento(gamePlayerId, statusAtual) {
+  async function togglePagamento(gamePlayerId: string, statusAtual: string) {
     const novoStatus = statusAtual === "pago" ? "pendente" : "pago";
     await supabase
       .from("game_players")
@@ -82,7 +117,7 @@ function useFinanceiroData() {
     fetchData();
   }
 
-  async function toggleMulta(gamePlayerId, multaAtual) {
+  async function toggleMulta(gamePlayerId: string, multaAtual: boolean) {
     await supabase
       .from("game_players")
       .update({ multa_aplicada: !multaAtual })
@@ -150,7 +185,7 @@ function useFinanceiroData() {
 }
 
 // ─── Componente Badge ──────────────────────────────────────────────────────────
-function Badge({ children, color }) {
+function Badge({ children, color }: { children: ReactNode; color: "green" | "red" | "yellow" | "blue" | "gray" }) {
   const colors = {
     green: "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30",
     red: "bg-red-500/20 text-red-300 border border-red-500/30",
@@ -168,7 +203,7 @@ function Badge({ children, color }) {
 }
 
 // ─── Card de estatística ───────────────────────────────────────────────────────
-function StatCard({ label, value, sub, accent, icon }) {
+function StatCard({ label, value, sub, accent, icon }: { label: string; value: string; sub?: string; accent: "green" | "red" | "yellow" | "blue"; icon: string }) {
   const accents = {
     green:
       "from-emerald-500/20 to-emerald-500/5 border-emerald-500/30 text-emerald-400",
@@ -200,7 +235,7 @@ function StatCard({ label, value, sub, accent, icon }) {
 }
 
 // ─── Barra de progresso ────────────────────────────────────────────────────────
-function ProgressBar({ value, max, color }) {
+function ProgressBar({ value, max, color }: { value: number; max: number; color: "green" | "yellow" | "red" }) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
   const colors = {
     green: "bg-emerald-500",
@@ -249,7 +284,7 @@ export default function FinanceiroPainel() {
 
   const pctArrecadado =
     totalEsperado > 0
-      ? ((totalArrecadado / totalEsperado) * 100).toFixed(0)
+      ? Math.round((totalArrecadado / totalEsperado) * 100)
       : 0;
 
   return (
@@ -554,5 +589,13 @@ export default function FinanceiroPainel() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
 
 
