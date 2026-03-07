@@ -1,26 +1,71 @@
+
+
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
+/* ── Design Tokens Light ───────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg-primary:    #F7F5F0;
+  --bg-secondary:  #FFFFFF;
+  --bg-card:       #FFFFFF;
+  --bg-muted:      #EEEBE3;
+  --text-primary:  #111827;
+  --text-secondary:#4B5563;
+  --text-muted:    #9CA3AF;
+  --border:        #E5E0D5;
+  --gold:          #C9960A;
+  --gold-light:    #F0C040;
+  --blue:          #1A4FC4;
+  --blue-light:    #3B6FE8;
+  --red:           #C0143C;
+  --green:         #16A34A;
+  --shadow-sm:     0 1px 4px rgba(0,0,0,0.06);
+  --shadow:        0 4px 16px rgba(0,0,0,0.08);
+  --shadow-lg:     0 8px 32px rgba(0,0,0,0.12);
+  --radius:        16px;
+  --radius-sm:     10px;
+  --radius-full:   9999px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ── Design Tokens Dark ────────────────────────── */
+.dark {
+  --bg-primary:    #0B0F1E;
+  --bg-secondary:  #111827;
+  --bg-card:       #151C2E;
+  --bg-muted:      #1A2236;
+  --text-primary:  #F0EFE8;
+  --text-secondary:#A8B0C8;
+  --text-muted:    #4A5470;
+  --border:        #1E2A42;
+  --gold:          #E8B923;
+  --gold-light:    #F5D060;
+  --blue:          #3B6FE8;
+  --blue-light:    #6B9BFF;
+  --red:           #E03060;
+  --green:         #22C55E;
+  --shadow-sm:     0 1px 4px rgba(0,0,0,0.3);
+  --shadow:        0 4px 16px rgba(0,0,0,0.4);
+  --shadow-lg:     0 8px 32px rgba(0,0,0,0.5);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ── Base ──────────────────────────────────────── */
+* {
+  box-sizing: border-box;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Outfit', sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s, color 0.3s;
+  -webkit-font-smoothing: antialiased;
 }
+
+.font-display {
+  font-family: 'Bebas Neue', sans-serif;
+}
+
+/* ── Scrollbar ─────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }

@@ -31,6 +31,7 @@ export default function SplashWrapper({
         {splashDone && (
           <motion.div
             key="main"
+            className="block"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: isMobile ? 0.7 : 0 }}

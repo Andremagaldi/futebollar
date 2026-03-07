@@ -88,11 +88,11 @@ export default function TimesPage() {
     fetchTimes();
   }, []);
 
-  if (loading) return <p style={{ padding: 20 }}>Carregando...</p>;
+  if (loading) return <p className="p-5">Carregando...</p>;
 
   return (
     <ProtectedRoute>
-      <div style={{ padding: 20 }}>
+      <div className="p-5">
         <h1>Times Sorteados ⚽</h1>
 
         <LogoutButton />
@@ -113,12 +113,7 @@ export default function TimesPage() {
           return (
             <div
               key={team.id}
-              style={{
-                marginTop: 20,
-                padding: 15,
-                borderRadius: 12,
-                background: "#f3f3f3",
-              }}
+              className="mt-5 rounded-xl bg-neutral-100 p-4 dark:bg-slate-800"
             >
               <h2>{team.nome_time}</h2>
 

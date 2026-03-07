@@ -39,32 +39,18 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
       {visible && (
         <motion.div
           key="splash"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900"
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.8, ease: "easeInOut" }}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-            backgroundColor: "#0F172A",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
         >
           <video
-            src="/splash-video-mobile.mp4"
+            src="/splash-video-logo.mp4"
             autoPlay
             muted
             loop
             playsInline
-            style={{
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-              objectFit: "contain",
-            }}
+            className="absolute inset-0 h-full w-full object-contain"
           />
         </motion.div>
       )}

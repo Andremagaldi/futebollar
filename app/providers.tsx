@@ -1,7 +1,8 @@
-'use client';
+"use client";
 
-import { createContext, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { createContext, useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { ThemeProvider } from "next-themes";
 
 type AuthContextType = {
   user: any;
@@ -18,13 +19,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Busca sessão inicial
     supabase.auth.getSession().then(({ data }) => {
       setUser(data.session?.user ?? null);
       setLoading(false);
     });
 
-    // Escuta mudanças de auth
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -38,8 +37,15 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading }}>
-      {children}
-    </AuthContext.Provider>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="light"
+      enableSystem
+      disableTransitionOnChange={false}
+    >
+      <AuthContext.Provider value={{ user, loading }}>
+        <div className="contents">{children}</div>
+      </AuthContext.Provider>
+    </ThemeProvider>
   );
 }

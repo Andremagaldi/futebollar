@@ -9,94 +9,106 @@ interface Jogador {
   nome: string;
   posicao?: string;
 }
-
 interface Time {
   nome: string;
-  cor: string;
   jogadores: Jogador[];
 }
-
 interface Confirmado {
   id: string;
   nome: string;
   tipo: string;
   posicao: string;
 }
-
 interface MVP {
   nome: string;
   votos: number;
-  foto_url?: string;
 }
-
 interface Artilheiro {
   nome: string;
   gols: number;
-  foto_url?: string;
 }
 
-// ── Cores dos times ────────────────────────────────
-const CORES_TIMES: Record<
+// ── Configs por time ───────────────────────────────
+const TIME_CFG: Record<
   string,
-  { bg: string; border: string; text: string; badge: string }
+  { bar: string; text: string; badge: string; num: string }
 > = {
   "Time A": {
-    bg: "from-blue-900/60 to-blue-950/80",
-    border: "border-blue-500/40",
-    text: "text-blue-300",
+    bar: "bg-blue-600",
+    text: "text-blue-400",
     badge: "bg-blue-600",
+    num: "text-blue-950",
   },
   "Time B": {
-    bg: "from-red-900/60 to-red-950/80",
-    border: "border-red-500/40",
-    text: "text-red-300",
+    bar: "bg-red-600",
+    text: "text-red-400",
     badge: "bg-red-600",
+    num: "text-red-950",
   },
   "Time C": {
-    bg: "from-yellow-900/60 to-yellow-950/80",
-    border: "border-yellow-500/40",
-    text: "text-yellow-300",
-    badge: "bg-yellow-600",
+    bar: "bg-yellow-500",
+    text: "text-yellow-400",
+    badge: "bg-yellow-500",
+    num: "text-yellow-950",
   },
   "Time D": {
-    bg: "from-purple-900/60 to-purple-950/80",
-    border: "border-purple-500/40",
-    text: "text-purple-300",
+    bar: "bg-purple-600",
+    text: "text-purple-400",
     badge: "bg-purple-600",
+    num: "text-purple-950",
   },
 };
-
-const COR_DEFAULT = {
-  bg: "from-green-900/60 to-green-950/80",
-  border: "border-green-500/40",
-  text: "text-green-300",
+const CFG_DEFAULT = {
+  bar: "bg-green-600",
+  text: "text-green-400",
   badge: "bg-green-600",
+  num: "text-green-950",
 };
 
+function formatTipo(tipo: string) {
+  const map: Record<string, string> = {
+    mensalista_membro: "Mensalista",
+    mensalista_convidado: "Mensalista Convidado",
+    avulso_membro: "Avulso",
+    avulso_convidado: "Avulso Convidado",
+  };
+  return map[tipo] ?? tipo;
+}
+
+function EmptyState({ icon, msg }: { icon: string; msg: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-gray-600">
+      <span className="text-6xl mb-4">{icon}</span>
+      <p className="text-lg text-gray-500">{msg}</p>
+    </div>
+  );
+}
+
+// ── Página principal ───────────────────────────────
 export default function TelaoPage() {
   const [times, setTimes] = useState<Time[]>([]);
   const [confirmados, setConfirmados] = useState<Confirmado[]>([]);
   const [mvps, setMvps] = useState<MVP[]>([]);
   const [artilheiros, setArtilheiros] = useState<Artilheiro[]>([]);
   const [gameId, setGameId] = useState<string | null>(null);
-  const [dataJogo, setDataJogo] = useState<string>("");
+  const [dataJogo, setDataJogo] = useState("");
   const [horaAtual, setHoraAtual] = useState("");
   const [aba, setAba] = useState<"times" | "lista" | "destaques">("times");
 
   // Relógio
   useEffect(() => {
-    const tick = () => {
-      const now = new Date();
+    const tick = () =>
       setHoraAtual(
-        now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+        new Date().toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
       );
-    };
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, []);
 
-  // Carrega jogo mais recente e dados
   useEffect(() => {
     loadGame();
   }, []);
@@ -104,7 +116,6 @@ export default function TelaoPage() {
   // Realtime
   useEffect(() => {
     if (!gameId) return;
-
     const channel = supabase
       .channel("telao-realtime")
       .on(
@@ -128,7 +139,6 @@ export default function TelaoPage() {
         () => loadDestaques(gameId),
       )
       .subscribe();
-
     return () => {
       supabase.removeChannel(channel);
     };
@@ -141,9 +151,7 @@ export default function TelaoPage() {
       .order("data_jogo", { ascending: false })
       .limit(1)
       .single();
-
     if (!data) return;
-
     setGameId(data.id);
     setDataJogo(
       new Date(data.data_jogo).toLocaleDateString("pt-BR", {
@@ -152,7 +160,6 @@ export default function TelaoPage() {
         month: "long",
       }),
     );
-
     await Promise.all([
       loadTimes(data.id),
       loadConfirmados(data.id),
@@ -166,27 +173,19 @@ export default function TelaoPage() {
       .select("*, users(nome, posicao)")
       .eq("game_id", gid)
       .order("time_nome");
-
     if (!data) return;
-
-    // Agrupa por time
     const mapa: Record<string, Jogador[]> = {};
     for (const row of data) {
       const nome = row.time_nome ?? "Time A";
       if (!mapa[nome]) mapa[nome] = [];
       mapa[nome].push({
         id: row.user_id,
-        nome: row.users?.nome ?? "—",
-        posicao: row.users?.posicao,
+        nome: (row.users as any)?.nome ?? "—",
+        posicao: (row.users as any)?.posicao,
       });
     }
-
     setTimes(
-      Object.entries(mapa).map(([nome, jogadores]) => ({
-        nome,
-        cor: nome,
-        jogadores,
-      })),
+      Object.entries(mapa).map(([nome, jogadores]) => ({ nome, jogadores })),
     );
   }
 
@@ -197,9 +196,7 @@ export default function TelaoPage() {
       .eq("game_id", gid)
       .eq("status", "confirmado")
       .order("ordem_entrada");
-
     if (!data) return;
-
     setConfirmados(
       data.map((d) => ({
         id: d.id,
@@ -211,29 +208,30 @@ export default function TelaoPage() {
   }
 
   async function loadDestaques(gid: string) {
-    // MVP — mais votado
+    // MVP — usa voted_for (nome real da coluna)
     const { data: votosData } = await supabase
       .from("mvp_votes")
-      .select("votado_id, users!mvp_votes_votado_id_fkey(nome)")
+      .select("voted_for, users!mvp_votes_voted_for_fkey(nome)")
       .eq("game_id", gid);
 
     if (votosData && votosData.length > 0) {
       const contagem: Record<string, { nome: string; votos: number }> = {};
       for (const v of votosData) {
-        const id = v.votado_id;
+        const id = v.voted_for;
         if (!contagem[id])
           contagem[id] = { nome: (v.users as any)?.nome ?? "—", votos: 0 };
         contagem[id].votos++;
       }
-      const top3 = Object.values(contagem)
-        .sort((a, b) => b.votos - a.votos)
-        .slice(0, 3);
-      setMvps(top3);
+      setMvps(
+        Object.values(contagem)
+          .sort((a, b) => b.votos - a.votos)
+          .slice(0, 3),
+      );
     } else {
       setMvps([]);
     }
 
-    // Artilheiro — mais gols
+    // Artilheiros
     const { data: golsData } = await supabase
       .from("gols_partida")
       .select("user_id, gols, users(nome)")
@@ -247,167 +245,185 @@ export default function TelaoPage() {
           contagem[id] = { nome: (g.users as any)?.nome ?? "—", gols: 0 };
         contagem[id].gols += g.gols ?? 1;
       }
-      const ranking = Object.values(contagem).sort((a, b) => b.gols - a.gols);
-      setArtilheiros(ranking);
+      setArtilheiros(Object.values(contagem).sort((a, b) => b.gols - a.gols));
     } else {
       setArtilheiros([]);
     }
   }
 
-  // ── RENDER ────────────────────────────────────────
+  // ── RENDER ─────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-green-950 text-white flex flex-col select-none overflow-hidden">
-      {/* Header */}
-      <header className="flex items-center justify-between px-8 py-4 bg-green-900/50 border-b border-green-800/50">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center text-xl">
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col select-none overflow-hidden">
+      {/* ── Header ── */}
+      <header className="flex items-center justify-between px-6 py-4 bg-gray-900 border-b border-white/5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center text-xl flex-shrink-0">
             ⚽
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-wide">
-              Futebol Lar Cristão
+            <h1 className="font-display text-2xl tracking-widest text-white leading-none">
+              FUTEBOL LAR CRISTÃO
             </h1>
-            <p className="text-green-400 text-sm capitalize">{dataJogo}</p>
+            <p className="text-gray-500 text-xs capitalize mt-0.5">
+              {dataJogo}
+            </p>
           </div>
         </div>
         <div className="text-right">
-          <p className="text-3xl font-mono font-bold text-green-300">
+          <p className="font-display text-4xl text-yellow-400 tabular-nums leading-none">
             {horaAtual}
           </p>
-          <p className="text-green-500 text-xs">
-            {confirmados.length} jogadores confirmados
+          <p className="text-gray-600 text-xs mt-1">
+            {confirmados.length} confirmados · 🔴 ao vivo
           </p>
         </div>
       </header>
 
-      {/* Abas */}
-      <div className="flex border-b border-green-800/50 bg-green-900/30">
-        {[
-          { key: "times", label: "⚽ Times" },
-          { key: "lista", label: "👥 Confirmados" },
-          { key: "destaques", label: "🏆 Destaques" },
-        ].map((a) => (
+      {/* ── Abas ── */}
+      <div className="flex border-b border-white/5 bg-gray-900/60">
+        {(
+          [
+            { key: "times", label: "⚽ Times" },
+            { key: "lista", label: "👥 Confirmados" },
+            { key: "destaques", label: "🏆 Destaques" },
+          ] as const
+        ).map(({ key, label }) => (
           <button
-            key={a.key}
-            onClick={() => setAba(a.key as typeof aba)}
-            className={`flex-1 py-3 text-sm font-semibold transition-colors ${
-              aba === a.key
-                ? "text-white border-b-2 border-green-400"
-                : "text-green-500 hover:text-green-300"
+            key={key}
+            onClick={() => setAba(key)}
+            className={`flex-1 py-3.5 text-sm font-semibold tracking-wide transition-all ${
+              aba === key
+                ? "text-white border-b-2 border-yellow-400"
+                : "text-gray-600 hover:text-gray-400"
             }`}
           >
-            {a.label}
+            {label}
           </button>
         ))}
       </div>
 
-      {/* Conteúdo */}
+      {/* ── Conteúdo ── */}
       <main className="flex-1 overflow-auto p-6">
         {/* ABA: TIMES */}
-        {aba === "times" && (
-          <div>
-            {times.length === 0 ? (
-              <EmptyState icon="⚽" msg="Times ainda não foram sorteados" />
-            ) : (
-              <div
-                className={`grid gap-4 ${times.length <= 2 ? "grid-cols-2" : "grid-cols-2 lg:grid-cols-4"}`}
-              >
-                {times.map((time) => {
-                  const cor = CORES_TIMES[time.nome] ?? COR_DEFAULT;
-                  return (
-                    <div
-                      key={time.nome}
-                      className={`bg-gradient-to-b ${cor.bg} border ${cor.border} rounded-2xl overflow-hidden`}
-                    >
-                      {/* Header do time */}
+        {aba === "times" &&
+          (times.length === 0 ? (
+            <EmptyState icon="⚽" msg="Times ainda não foram sorteados" />
+          ) : (
+            <div
+              className={`grid gap-4 ${times.length <= 2 ? "grid-cols-2" : "grid-cols-2 lg:grid-cols-4"}`}
+            >
+              {times.map((time) => {
+                const cfg = TIME_CFG[time.nome] ?? CFG_DEFAULT;
+                const goleiros = time.jogadores.filter(
+                  (j) => j.posicao === "goleiro",
+                );
+                const linha = time.jogadores.filter(
+                  (j) => j.posicao !== "goleiro",
+                );
+                return (
+                  <div
+                    key={time.nome}
+                    className="rounded-2xl overflow-hidden bg-gray-900 border border-white/5"
+                  >
+                    {/* Header */}
+                    <div className="flex items-center gap-2 px-4 py-3 border-b border-white/5">
                       <div
-                        className={`px-4 py-3 flex items-center gap-2 border-b ${cor.border}`}
+                        className={`w-3 h-8 rounded-full flex-shrink-0 ${cfg.bar}`}
+                      />
+                      <span
+                        className={`font-display text-xl tracking-wider ${cfg.text}`}
                       >
-                        <span
-                          className={`${cor.badge} text-white text-xs font-bold px-2 py-0.5 rounded-full`}
-                        >
-                          {time.nome}
-                        </span>
-                        <span className={`ml-auto text-xs ${cor.text}`}>
-                          {time.jogadores.length} jogadores
-                        </span>
-                      </div>
-                      {/* Jogadores */}
-                      <ul className="p-3 space-y-1.5">
-                        {time.jogadores.map((j, i) => (
-                          <li key={j.id} className="flex items-center gap-2">
-                            <span className="text-green-600 text-xs w-4 text-right">
-                              {i + 1}
-                            </span>
-                            <span className="text-white text-sm font-medium flex-1 truncate">
-                              {j.nome}
-                            </span>
-                            {j.posicao === "goleiro" && (
-                              <span className="text-yellow-400 text-xs">
-                                🧤
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
+                        {time.nome}
+                      </span>
+                      <span className="ml-auto text-xs text-gray-600">
+                        {time.jogadores.length} jog.
+                      </span>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+                    {/* Goleiros */}
+                    <ul className="px-3 pt-2 space-y-1">
+                      {goleiros.map((j, i) => (
+                        <li
+                          key={j.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-yellow-900/20"
+                        >
+                          <span className="text-gray-600 text-xs w-4 text-right">
+                            {i + 1}
+                          </span>
+                          <span className="text-white text-sm font-medium flex-1 truncate">
+                            {j.nome}
+                          </span>
+                          <span className="text-yellow-400 text-xs">🧤</span>
+                        </li>
+                      ))}
+                      {/* Linha */}
+                      {linha.map((j, i) => (
+                        <li
+                          key={j.id}
+                          className={`flex items-center gap-2 px-2 py-1.5 rounded-lg ${i % 2 === 0 ? "bg-white/[0.03]" : ""}`}
+                        >
+                          <span className="text-gray-700 text-xs w-4 text-right">
+                            {goleiros.length + i + 1}
+                          </span>
+                          <span className="text-gray-200 text-sm font-medium flex-1 truncate">
+                            {j.nome}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="h-3" />
+                  </div>
+                );
+              })}
+            </div>
+          ))}
 
         {/* ABA: CONFIRMADOS */}
-        {aba === "lista" && (
-          <div>
-            {confirmados.length === 0 ? (
-              <EmptyState icon="👥" msg="Nenhum jogador confirmado ainda" />
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {confirmados.map((j, i) => (
-                  <div
-                    key={j.id}
-                    className="bg-green-900/40 border border-green-800/40 rounded-xl px-4 py-3 flex items-center gap-3"
-                  >
-                    <span className="text-green-600 text-sm font-mono w-6">
-                      {i + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white font-medium text-sm truncate">
-                        {j.nome}
-                      </p>
-                      <p className="text-green-500 text-xs">
-                        {formatTipo(j.tipo)}
-                      </p>
-                    </div>
-                    {j.posicao === "goleiro" && (
-                      <span className="text-lg">🧤</span>
-                    )}
+        {aba === "lista" &&
+          (confirmados.length === 0 ? (
+            <EmptyState icon="👥" msg="Nenhum jogador confirmado ainda" />
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {confirmados.map((j, i) => (
+                <div
+                  key={j.id}
+                  className="bg-gray-900 border border-white/5 rounded-xl px-4 py-3 flex items-center gap-3"
+                >
+                  <span className="text-gray-700 text-sm font-mono w-6 flex-shrink-0">
+                    {i + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-medium text-sm truncate">
+                      {j.nome}
+                    </p>
+                    <p className="text-gray-600 text-xs">
+                      {formatTipo(j.tipo)}
+                    </p>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                  {j.posicao === "goleiro" && (
+                    <span className="text-lg flex-shrink-0">🧤</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
 
         {/* ABA: DESTAQUES */}
         {aba === "destaques" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
             {/* MVP */}
-            <div className="bg-gradient-to-b from-yellow-900/50 to-yellow-950/80 border border-yellow-600/40 rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-4">
+            <div className="bg-gray-900 border border-yellow-800/30 rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-5">
                 <span className="text-2xl">🏅</span>
-                <p className="text-yellow-400 text-sm font-semibold uppercase tracking-widest">
-                  MVP da Partida
+                <p className="font-display text-xl tracking-widest text-yellow-400">
+                  MVP DA PARTIDA
                 </p>
               </div>
               {mvps.length === 0 ? (
-                <p className="text-yellow-600 text-sm text-center py-4">
+                <p className="text-gray-600 text-sm text-center py-6">
                   Votação em andamento...
                 </p>
               ) : (
-                <ul className="space-y-2">
+                <ul className="space-y-3">
                   {mvps.map((m, i) => (
                     <li key={m.nome} className="flex items-center gap-3">
                       <span
@@ -424,7 +440,7 @@ export default function TelaoPage() {
                       <span className="flex-1 text-white font-medium truncate">
                         {m.nome}
                       </span>
-                      <span className="text-yellow-400 font-bold text-sm tabular-nums">
+                      <span className="text-yellow-400 font-bold text-sm tabular-nums flex-shrink-0">
                         {m.votos} {m.votos === 1 ? "voto" : "votos"}
                       </span>
                     </li>
@@ -434,22 +450,21 @@ export default function TelaoPage() {
             </div>
 
             {/* Artilheiros */}
-            <div className="bg-gradient-to-b from-orange-900/50 to-orange-950/80 border border-orange-600/40 rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-4">
+            <div className="bg-gray-900 border border-orange-800/30 rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-5">
                 <span className="text-2xl">⚽</span>
-                <p className="text-orange-400 text-sm font-semibold uppercase tracking-widest">
-                  Artilheiros
+                <p className="font-display text-xl tracking-widest text-orange-400">
+                  ARTILHEIROS
                 </p>
               </div>
               {artilheiros.length === 0 ? (
-                <p className="text-orange-600 text-sm text-center py-4">
+                <p className="text-gray-600 text-sm text-center py-6">
                   Nenhum gol registrado ainda
                 </p>
               ) : (
-                <ul className="space-y-2">
+                <ul className="space-y-3">
                   {artilheiros.map((a, i) => (
                     <li key={a.nome} className="flex items-center gap-3">
-                      {/* Posição */}
                       <span
                         className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
                           i === 0
@@ -458,17 +473,15 @@ export default function TelaoPage() {
                               ? "bg-gray-400 text-gray-900"
                               : i === 2
                                 ? "bg-orange-700 text-orange-100"
-                                : "bg-green-900 text-green-400"
+                                : "bg-gray-800 text-gray-400"
                         }`}
                       >
                         {i + 1}
                       </span>
-                      {/* Nome */}
                       <span className="flex-1 text-white font-medium truncate">
                         {a.nome}
                       </span>
-                      {/* Gols */}
-                      <span className="text-orange-400 font-bold text-sm tabular-nums">
+                      <span className="text-orange-400 font-bold text-sm tabular-nums flex-shrink-0">
                         {a.gols} {a.gols === 1 ? "gol" : "gols"}
                       </span>
                     </li>
@@ -480,32 +493,15 @@ export default function TelaoPage() {
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="px-6 py-2 bg-green-900/30 border-t border-green-800/50 flex items-center justify-between">
-        <p className="text-green-600 text-xs">
-          🔴 Ao vivo — atualização automática
+      {/* ── Footer ── */}
+      <footer className="px-6 py-2.5 bg-gray-900/60 border-t border-white/5 flex items-center justify-between">
+        <p className="text-gray-700 text-xs">
+          🔴 Atualização automática em tempo real
         </p>
-        <p className="text-green-700 text-xs">Futebol Lar Cristão</p>
+        <p className="text-gray-700 text-xs">
+          Futebol Lar Cristão · Cristão · Organizado · Justo
+        </p>
       </footer>
     </div>
   );
-}
-
-function EmptyState({ icon, msg }: { icon: string; msg: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-24 text-green-600">
-      <span className="text-5xl mb-4">{icon}</span>
-      <p className="text-lg">{msg}</p>
-    </div>
-  );
-}
-
-function formatTipo(tipo: string) {
-  const map: Record<string, string> = {
-    mensalista_membro: "Mensalista",
-    mensalista_convidado: "Mensalista Convidado",
-    avulso_membro: "Avulso",
-    avulso_convidado: "Avulso Convidado",
-  };
-  return map[tipo] ?? tipo;
 }

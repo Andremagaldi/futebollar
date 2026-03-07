@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import PageHeader from "@/components/layout/PageHeader";
+import BottomNav from "@/components/layout/BottomNav";
 
 interface Jogador {
   id: string;
@@ -13,6 +15,7 @@ interface Jogador {
 
 type Ordenacao = "stars_desc" | "stars_asc" | "mvp_desc" | "nome";
 
+// ── StarRating ─────────────────────────────────────────────
 function StarRating({
   value,
   onChange,
@@ -33,9 +36,9 @@ function StarRating({
           onClick={() => onChange?.(s)}
           onMouseEnter={() => !readonly && setHovered(s)}
           onMouseLeave={() => !readonly && setHovered(null)}
-          className={`text-xl transition-all duration-100 ${readonly ? "cursor-default" : "cursor-pointer hover:scale-125"} ${
-            s <= display ? "text-amber-400" : "text-zinc-700"
-          }`}
+          className={`text-lg transition-all duration-100 ${
+            readonly ? "cursor-default" : "cursor-pointer hover:scale-125"
+          } ${s <= display ? "text-yellow-400" : "text-gray-300 dark:text-gray-700"}`}
         >
           ★
         </button>
@@ -44,12 +47,72 @@ function StarRating({
   );
 }
 
-export default function RankingJogadores() {
+// ── Pódio card ─────────────────────────────────────────────
+function PodiumCard({
+  jogador,
+  place,
+}: {
+  jogador: Jogador;
+  place: 1 | 2 | 3;
+}) {
+  const configs = {
+    1: {
+      height: "h-36",
+      avatar: "bg-gradient-to-br from-yellow-400 to-yellow-600",
+      border: "border-yellow-400/40 bg-yellow-400/5 dark:bg-yellow-400/10",
+      medal: "🥇",
+      label: "text-yellow-500",
+    },
+    2: {
+      height: "h-28",
+      avatar: "bg-gradient-to-br from-gray-400 to-gray-500",
+      border: "border-gray-400/40 bg-gray-400/5 dark:bg-gray-400/10",
+      medal: "🥈",
+      label: "text-gray-400",
+    },
+    3: {
+      height: "h-20",
+      avatar: "bg-gradient-to-br from-orange-400 to-orange-600",
+      border: "border-orange-400/40 bg-orange-400/5 dark:bg-orange-400/10",
+      medal: "🥉",
+      label: "text-orange-500",
+    },
+  };
+  const cfg = configs[place];
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <span className="text-2xl">{cfg.medal}</span>
+      <div
+        className={`w-24 rounded-2xl border ${cfg.border} ${cfg.height} flex flex-col items-center justify-end pb-3 pt-2 transition-all`}
+      >
+        <div
+          className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-lg mb-1 ${cfg.avatar}`}
+        >
+          {(jogador.name || "?")[0].toUpperCase()}
+        </div>
+        <p className="text-xs font-semibold text-center truncate px-1 w-full text-gray-900 dark:text-white">
+          {jogador.name?.split(" ")[0]}
+        </p>
+        <p className={`text-xs ${cfg.label}`}>
+          {"★".repeat(jogador.stars || 0)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Página principal ───────────────────────────────────────
+export default function RankingPage() {
   const [jogadores, setJogadores] = useState<Jogador[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [ordem, setOrdem] = useState<Ordenacao>("stars_desc");
+
+  useEffect(() => {
+    fetchJogadores();
+  }, []);
 
   async function fetchJogadores() {
     setLoading(true);
@@ -64,15 +127,15 @@ export default function RankingJogadores() {
   async function updateStars(userId: string, stars: number) {
     setSaving(userId);
     await supabase.from("users").update({ stars }).eq("id", userId);
-    setJogadores((prev: Jogador[]) =>
+    setJogadores((prev) =>
       prev.map((j) => (j.id === userId ? { ...j, stars } : j)),
     );
     setSaving(null);
   }
 
-  useEffect(() => {
-    fetchJogadores();
-  }, []);
+  const top3 = [...jogadores]
+    .sort((a, b) => (b.stars || 0) - (a.stars || 0))
+    .slice(0, 3);
 
   const filtrados = jogadores
     .filter((j) => j.name?.toLowerCase().includes(busca.toLowerCase()))
@@ -84,96 +147,45 @@ export default function RankingJogadores() {
       return 0;
     });
 
-  const top3 = [...jogadores]
-    .sort((a, b) => (b.stars || 0) - (a.stars || 0))
-    .slice(0, 3);
-  const podiumOrder = [1, 0, 2]; // prata, ouro, bronze
+  const MEDAL_COLORS = ["text-yellow-500", "text-gray-400", "text-orange-500"];
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600&display=swap');
-        .font-bebas { font-family: 'Bebas Neue', sans-serif; }
-        body { font-family: 'Outfit', sans-serif; }
-        .gold { color: #f5c518; }
-        .silver { color: #c0c0c0; }
-        .bronze { color: #cd7f32; }
-        .card-glow:hover { box-shadow: 0 0 30px rgba(245,197,24,0.1); }
-        @keyframes rise { from { opacity:0; transform: translateY(20px); } to { opacity:1; transform: translateY(0); } }
-        .rise { animation: rise 0.4s ease forwards; }
-      `}</style>
-
-      {/* Header */}
-      <header className="border-b border-white/5 bg-black/40 backdrop-blur sticky top-0 z-30">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="font-bebas text-3xl tracking-widest gold">
-              Ranking
-            </h1>
-            <p className="text-zinc-500 text-xs -mt-1">
-              Futebol Lar Cristão · Temporada atual
-            </p>
-          </div>
+    <div className="min-h-screen pb-24 bg-gray-50 dark:bg-gray-950">
+      <PageHeader
+        title="RANKING"
+        subtitle="Futebol Lar Cristão · Temporada atual"
+        rightSlot={
           <button
             onClick={fetchJogadores}
-            className="text-zinc-500 hover:text-white text-sm transition-colors"
+            className="w-9 h-9 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors active:scale-95"
           >
             🔄
           </button>
-        </div>
-      </header>
+        }
+      />
 
-      <main className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-        {/* Pódio top 3 */}
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+        {/* ── Pódio Top 3 ── */}
         {!loading && top3.length >= 3 && (
-          <div className="flex items-end justify-center gap-4 py-6">
-            {podiumOrder.map((idx) => {
-              const j = top3[idx];
-              const medals = ["🥇", "🥈", "🥉"];
-              const heights = ["h-28", "h-36", "h-20"];
-              const colors = [
-                "border-[#c0c0c0]/40 bg-[#c0c0c0]/5",
-                "border-[#f5c518]/40 bg-[#f5c518]/10",
-                "border-[#cd7f32]/40 bg-[#cd7f32]/5",
-              ];
-              const labelColors = ["silver", "gold", "bronze"];
-              return (
-                <div
-                  key={j.id}
-                  className="flex flex-col items-center gap-2 rise"
-                >
-                  <span className="text-2xl">{medals[idx]}</span>
-                  <div
-                    className={`w-24 rounded-xl border ${colors[idx]} flex flex-col items-center justify-end pb-3 pt-2 ${heights[idx]}`}
-                  >
-                    <div className="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-600 flex items-center justify-center font-bold text-lg mb-1">
-                      {(j.name || "?")[0].toUpperCase()}
-                    </div>
-                    <p className="text-xs font-semibold text-center truncate px-1 w-full text-center">
-                      {j.name?.split(" ")[0]}
-                    </p>
-                    <p className={`text-xs ${labelColors[idx]}`}>
-                      {"★".repeat(j.stars || 0)}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="flex items-end justify-center gap-4 py-4">
+            <PodiumCard jogador={top3[1]} place={2} />
+            <PodiumCard jogador={top3[0]} place={1} />
+            <PodiumCard jogador={top3[2]} place={3} />
           </div>
         )}
 
-        {/* Filtros */}
+        {/* ── Filtros ── */}
         <div className="flex flex-col sm:flex-row gap-3">
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar jogador..."
-            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50"
+            placeholder="🔍 Buscar jogador..."
+            className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
           />
           <select
             value={ordem}
             onChange={(e) => setOrdem(e.target.value as Ordenacao)}
-            className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-zinc-300 focus:outline-none"
+            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
           >
             <option value="stars_desc">⭐ Mais estrelas</option>
             <option value="stars_asc">⭐ Menos estrelas</option>
@@ -182,53 +194,79 @@ export default function RankingJogadores() {
           </select>
         </div>
 
-        {/* Lista */}
+        {/* ── Lista ── */}
         {loading ? (
-          <div className="text-center py-16 text-zinc-600 animate-pulse">
-            Carregando ranking...
+          <div className="space-y-2">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-20 rounded-2xl animate-pulse bg-gray-200 dark:bg-gray-800"
+              />
+            ))}
+          </div>
+        ) : filtrados.length === 0 ? (
+          <div className="text-center py-16">
+            <p className="text-4xl mb-3">🔍</p>
+            <p className="font-semibold text-gray-500 dark:text-gray-600">
+              Nenhum jogador encontrado.
+            </p>
           </div>
         ) : (
           <div className="space-y-2">
             {filtrados.map((j, idx) => (
               <div
                 key={j.id}
-                className={`flex items-center gap-4 p-4 rounded-2xl border border-white/5 bg-white/[0.02] card-glow transition-all ${
+                className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${
                   saving === j.id ? "opacity-60" : ""
-                }`}
+                } ${
+                  idx === 0
+                    ? "bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200 dark:border-yellow-800/40"
+                    : "bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800"
+                } hover:shadow-md`}
               >
                 {/* Posição */}
                 <span
-                  className={`text-sm font-bebas w-6 text-center ${
-                    idx === 0
-                      ? "gold text-xl"
-                      : idx === 1
-                        ? "silver"
-                        : idx === 2
-                          ? "bronze"
-                          : "text-zinc-600"
-                  }`}
+                  className={`text-sm font-display w-6 text-center flex-shrink-0 ${
+                    idx < 3
+                      ? MEDAL_COLORS[idx]
+                      : "text-gray-400 dark:text-gray-600"
+                  } ${idx === 0 ? "text-xl" : ""}`}
                 >
-                  {idx + 1}
+                  {idx < 3 ? ["🥇", "🥈", "🥉"][idx] : `#${idx + 1}`}
                 </span>
 
                 {/* Avatar */}
-                <div className="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-zinc-300 shrink-0">
+                <div
+                  className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-white text-base flex-shrink-0 ${
+                    idx === 0
+                      ? "bg-gradient-to-br from-yellow-400 to-yellow-600"
+                      : idx === 1
+                        ? "bg-gradient-to-br from-gray-400 to-gray-500"
+                        : idx === 2
+                          ? "bg-gradient-to-br from-orange-400 to-orange-600"
+                          : "bg-gradient-to-br from-blue-500 to-blue-700"
+                  }`}
+                >
                   {(j.name || "?")[0].toUpperCase()}
                 </div>
 
-                {/* Nome e tipo */}
+                {/* Nome + tipo */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-white font-semibold text-sm truncate">
+                  <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
                     {j.name}
                   </p>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <span
-                      className={`text-xs ${j.tipo === "mensalista" ? "text-blue-400" : "text-zinc-500"}`}
+                      className={`text-xs font-medium ${
+                        j.tipo === "mensalista"
+                          ? "text-blue-600 dark:text-blue-400"
+                          : "text-gray-400 dark:text-gray-600"
+                      }`}
                     >
-                      {j.tipo || "avulso"}
+                      {j.tipo === "mensalista" ? "📅 Mensalista" : "💳 Avulso"}
                     </span>
                     {(j.mvp_count || 0) > 0 && (
-                      <span className="text-xs text-amber-500">
+                      <span className="text-xs text-yellow-600 dark:text-yellow-400">
                         🏆 {j.mvp_count}× MVP
                       </span>
                     )}
@@ -236,27 +274,22 @@ export default function RankingJogadores() {
                 </div>
 
                 {/* Estrelas editáveis */}
-                <div className="flex flex-col items-end gap-1">
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
                   <StarRating
                     value={j.stars || 0}
                     onChange={(s) => updateStars(j.id, s)}
                   />
-                  <span className="text-zinc-600 text-xs">
-                    {j.stars || 0}/5 estrelas
+                  <span className="text-xs text-gray-400 dark:text-gray-600">
+                    {j.stars || 0}/5
                   </span>
                 </div>
               </div>
             ))}
-            {filtrados.length === 0 && (
-              <div className="text-center py-10 text-zinc-600 text-sm">
-                Nenhum jogador encontrado.
-              </div>
-            )}
           </div>
         )}
-      </main>
+      </div>
+
+      <BottomNav />
     </div>
   );
 }
-
-

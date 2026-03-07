@@ -19,7 +19,7 @@ export default function ProtectedRoute({
   }, [user, loading, router]);
 
   if (loading) {
-    return <p>Carregando...</p>;
+    return <p className="p-5">Carregando...</p>;
   }
 
   if (!user) {
