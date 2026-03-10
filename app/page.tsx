@@ -1,35 +1,34 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 
 export default function Home() {
   return (
-    <main className="min-h-dvh bg-white flex flex-col">
-      {/* Top Section: Background Image */}
-      <div className="relative w-full h-[60vh] overflow-hidden">
-        <div
-          className="w-full h-full bg-cover bg-center"
-          style={{
-            backgroundImage:
-              'url("https://images.pexels.com/photos/47730/the-ball-stadion-football-the-pitch-47730.jpeg?_gl=1*te7abb*_ga*MjA1OTMwOTY1My4xNzcyODYwMjc0*_ga_8JE65Q40S6*czE3NzI4NjAyNzQkbzEkZzEkdDE3NzI4NjA3MzIkajE2JGwwJGgw")',
-          }}
-        >
-          {/* Overlay suave para profundidade */}
-          <div className="absolute inset-0 bg-black/10"></div>
-        </div>
+    <main className="flex min-h-dvh flex-col bg-white">
+      {/* --- SEÇÃO SUPERIOR: IMAGEM --- */}
+      <div className="relative h-[60vh] w-full overflow-hidden">
+        <Image
+          src="/bolafutebol.jpeg"
+          alt="Futebol"
+          fill
+          priority
+          className="object-cover"
+        />
 
-        {/* --- O EFEITO DE NÉVOA (FOG EFFECT) --- */}
-        {/* Este gradiente cria a transição suave entre a foto e o fundo branco */}
-        <div className="absolute inset-x-0 bottom-0 h-50 bg-gradient-to-t from-white to-transparent   z-10" />
+        {/* Overlay suave para dar profundidade à foto */}
+        <div className="absolute inset-0 z-10 bg-black/10" />
+
+        {/* EFEITO DE NÉVOA (FOG EFFECT): Transição para o conteúdo branco */}
+        <div className="absolute inset-x-0 bottom-0 z-20 h-32 bg-gradient-to-t from-white to-transparent" />
       </div>
 
-      {/* Bottom Section: Content Area */}
-      {/* Usamos -mt-16 para o conteúdo começar dentro da área da névoa */}
-      <div className="w-full flex-1  bg-gradient-to-t from-white to-transparent lg:bg-gradient-to-t from- via-white/20 to-transparent   relative z-20 -mt-2 px-6 pb-8 flex flex-col items-center">
+      {/* --- SEÇÃO INFERIOR: CONTEÚDO --- */}
+      <div className="relative z-30 -mt-12 flex flex-1 flex-col items-center px-6 pb-8">
         {/* Logo and Brand Name */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="bg-[#004D98] rounded-full p-2.5 flex items-center justify-center shadow-lg">
-            <span className="text-[#D4AF37] font-bold italic text-xs">FL</span>
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex items-center justify-center rounded-full bg-[#004D98] p-2.5 shadow-lg">
+            <span className="text-xs font-bold italic text-[#D4AF37]">FL</span>
           </div>
           <h1 className="text-xl font-bold text-gray-900">
             Futebol<span className="text-[#004D98]">Lar</span>
@@ -37,24 +36,24 @@ export default function Home() {
         </div>
 
         {/* Main Heading */}
-        <h2 className="text-3xl font-black text-center text-black mb-3 leading-[1.1] tracking-tight">
+        <h2 className="mb-6 text-center text-3xl font-black leading-[1.1] tracking-tight text-black">
           Aqui o seu futebol
           <br />é comunhão.
         </h2>
 
         {/* Action Buttons */}
-        <div className="w-full space-y-3 max-w-sm">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button className="flex-1 bg-[#00D177] hover:bg-[#00b567] text-black font-bold py-4 rounded-xl transition-all duration-200 active:scale-95 shadow-md shadow-[#00D177]/20">
+        <div className="w-full max-w-sm space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button className="flex-1 rounded-xl bg-[#00D177] py-4 font-bold text-black shadow-md shadow-[#00D177]/20 transition-all duration-200 hover:bg-[#00b567] active:scale-95">
               Entrar
             </button>
-            <button className="flex-1 bg-[#1A1A1A] hover:bg-black text-white font-bold py-4 rounded-xl transition-all duration-200 active:scale-95">
+            <button className="flex-1 rounded-xl bg-[#1A1A1A] py-4 font-bold text-white transition-all duration-200 hover:bg-black active:scale-95">
               Sou novo por aqui
             </button>
           </div>
 
           {/* Google Login Button */}
-          <button className="w-full flex items-center justify-center gap-3 border-2 border-gray-100 py-4 rounded-xl hover:bg-gray-50 transition-all duration-200 active:scale-95">
+          <button className="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-gray-100 py-4 transition-all duration-200 hover:bg-gray-50 active:scale-95">
             <svg width="20" height="20" viewBox="0 0 24 24">
               <path
                 fill="#4285F4"
@@ -73,16 +72,16 @@ export default function Home() {
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
               />
             </svg>
-            <span className="text-gray-600 font-semibold">
+            <span className="font-semibold text-gray-600">
               Entrar com Google
             </span>
           </button>
         </div>
 
         {/* Footer Link */}
-        <p className="mt-auto pt-8 text-gray-400 text-sm text-center">
+        <p className="mt-auto pt-10 text-center text-sm text-gray-400">
           Não tem uma conta?{" "}
-          <a href="#" className="text-[#004D98] font-bold hover:underline">
+          <a href="#" className="font-bold text-[#004D98] hover:underline">
             Cadastre-se.
           </a>
         </p>
