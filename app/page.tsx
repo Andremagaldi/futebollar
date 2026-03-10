@@ -6,8 +6,8 @@ import Image from "next/image";
 export default function Home() {
   return (
     <main className="flex min-h-dvh flex-col bg-white">
-      {/* --- SEÇÃO SUPERIOR: IMAGEM --- */}
-      <div className="relative h-[60vh] w-full overflow-hidden">
+      {/* --- SEÇÃO SUPERIOR: IMAGEM (Ajustada para h-[45vh] no mobile para não sufocar o login) --- */}
+      <div className="relative h-[45vh] w-full overflow-hidden sm:h-[60vh]">
         <Image
           src="/bolafutebol.jpeg"
           alt="Futebol"
@@ -23,8 +23,9 @@ export default function Home() {
         <div className="absolute inset-x-0 bottom-0 z-20 h-32 bg-gradient-to-t from-white to-transparent" />
       </div>
 
-      {/* --- SEÇÃO INFERIOR: CONTEÚDO --- */}
-      <div className="relative z-30 -mt-12 flex flex-1 flex-col items-center px-6 pb-8">
+      {/* --- SEÇÃO INFERIOR: FORMULÁRIO E CONTEÚDO --- */}
+      {/* max-w-[400px] garante que no Desktop o formulário fique centralizado e elegante */}
+      <section className="relative z-30 -mt-12 flex w-full flex-1 flex-col items-center self-center px-6 pb-8 sm:max-w-[400px]">
         {/* Logo and Brand Name */}
         <div className="mb-4 flex items-center gap-3">
           <div className="flex items-center justify-center rounded-full bg-[#004D98] p-2.5 shadow-lg">
@@ -41,8 +42,8 @@ export default function Home() {
           <br />é comunhão.
         </h2>
 
-        {/* Action Buttons */}
-        <div className="w-full max-w-sm space-y-3">
+        {/* Action Buttons Area */}
+        <div className="w-full space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row">
             <button className="flex-1 rounded-xl bg-[#00D177] py-4 font-bold text-black shadow-md shadow-[#00D177]/20 transition-all duration-200 hover:bg-[#00b567] active:scale-95">
               Entrar
@@ -85,7 +86,7 @@ export default function Home() {
             Cadastre-se.
           </a>
         </p>
-      </div>
+      </section>
     </main>
   );
 }
