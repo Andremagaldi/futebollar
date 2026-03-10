@@ -20,12 +20,12 @@ export default function Home() {
 
         {/* --- O EFEITO DE NÉVOA (FOG EFFECT) --- */}
         {/* Este gradiente cria a transição suave entre a foto e o fundo branco */}
-        <div className="absolute inset-x-0 bottom-0 h-50 bg-gradient-to-t from-white via-black/ to-transparent lg:bg-gradient-to-t from-gray-300/50 via-black/20 to-transparent  z-10" />
+        <div className="absolute inset-x-0 bottom-0 h-50 bg-gradient-to-t from-white to-transparent   z-10" />
       </div>
 
       {/* Bottom Section: Content Area */}
       {/* Usamos -mt-16 para o conteúdo começar dentro da área da névoa */}
-      <div className="w-full flex-1  bg-gradient-to-t from-white via-black/ to-transparent relative z-20 -mt-2 px-6 pb-8 flex flex-col items-center">
+      <div className="w-full flex-1  bg-gradient-to-t from-white to-transparent lg:bg-gradient-to-t from- via-white/20 to-transparent   relative z-20 -mt-2 px-6 pb-8 flex flex-col items-center">
         {/* Logo and Brand Name */}
         <div className="flex items-center gap-3 mb-4">
           <div className="bg-[#004D98] rounded-full p-2.5 flex items-center justify-center shadow-lg">
@@ -37,7 +37,7 @@ export default function Home() {
         </div>
 
         {/* Main Heading */}
-        <h2 className="text-3xl font-black text-center text-black mb-10 leading-[1.1] tracking-tight">
+        <h2 className="text-3xl font-black text-center text-black mb-3 leading-[1.1] tracking-tight">
           Aqui o seu futebol
           <br />é comunhão.
         </h2>
