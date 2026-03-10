@@ -32,10 +32,7 @@ export default function RootLayout({
         style={{ backgroundColor: "#0F172A" }}
       >
         <Providers>
-          <SplashWrapper>
-            {children}
-            <BottomNav />
-          </SplashWrapper>
+          <SplashWrapper>{children}</SplashWrapper>
         </Providers>
       </body>
     </html>

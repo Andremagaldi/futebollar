@@ -4,9 +4,9 @@ import React from "react";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-white flex flex-col">
+    <main className="min-h-dvh bg-white flex flex-col">
       {/* Top Section: Background Image */}
-      <div className="relative w-full h-[50vh] overflow-hidden">
+      <div className="relative w-full h-[60vh] overflow-hidden">
         <div
           className="w-full h-full bg-cover bg-center"
           style={{
