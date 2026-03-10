@@ -31,9 +31,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         style={{ backgroundColor: "#0F172A" }}
       >
-        <Providers>
-          <SplashWrapper>{children}</SplashWrapper>
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
