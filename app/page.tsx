@@ -109,7 +109,7 @@ export default function Home() {
       {/* Imagem topo */}
       <div className="relative h-[45vh] w-full overflow-hidden sm:h-[60vh]">
         <Image
-          src="/bolafutebol01.jpg"
+          src="/bolafutebol03.jpg"
           alt="Futebol"
           fill
           priority
