@@ -23,7 +23,7 @@ export default function Home() {
     setErro(null);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/lista` },
+      options: { redirectTo: `${window.location.origin}/jogo` },
     });
     if (error) {
       setErro(error.message);
@@ -47,7 +47,7 @@ export default function Home() {
       setErro("E-mail ou senha incorretos.");
       setLoading(false);
     } else {
-      router.push("/lista");
+      router.push("/jogo");
     }
   }
 
@@ -85,6 +85,7 @@ export default function Home() {
         tipo: "avulso",
         posicao: "linha",
         status: "pendente",
+        role: "jogador",
       });
     }
 
