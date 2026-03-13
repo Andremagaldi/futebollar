@@ -182,18 +182,21 @@ export default function VotacaoPage() {
   return (
     <ProtectedRoute>
       <div className="min-h-screen pb-28 bg-gray-50 dark:bg-gray-950">
-        <PageHeader title="VOTAÇÃO MVP" subtitle="Melhor jogador da partida">
-          {/* Botão encerrar (admin) */}
-          {isAdmin && !encerrado && totalVotos > 0 && (
-            <button
-              onClick={encerrarVotacao}
-              disabled={encerrando}
-              className="text-xs px-3 py-1.5 rounded-full font-bold bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-800/40 active:scale-95 transition-all disabled:opacity-50"
-            >
-              {encerrando ? "..." : "🏁 Encerrar"}
-            </button>
-          )}
-        </PageHeader>
+        <PageHeader
+          title="VOTAÇÃO MVP"
+          subtitle="Melhor jogador da partida"
+          rightSlot={
+            isAdmin && !encerrado && totalVotos > 0 ? (
+              <button
+                onClick={encerrarVotacao}
+                disabled={encerrando}
+                className="text-xs px-3 py-1.5 rounded-full font-bold bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-800/40 active:scale-95 transition-all disabled:opacity-50"
+              >
+                {encerrando ? "..." : "🏁 Encerrar"}
+              </button>
+            ) : undefined
+          }
+        />
 
         {loading && (
           <div className="px-4 pt-6 space-y-3">
