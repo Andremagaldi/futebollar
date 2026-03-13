@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-
 import { useRouter } from "next/navigation";
-
 import { supabase } from "@/lib/supabaseClient";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import BottomNav from "@/components/layout/BottomNav";
+import ThemeToggle from "@/components/ui/ThemeToggle";
+
+// ── Troque pela sua chave PIX real ──
+const CHAVE_PIX = "PixArenaLar@gmail.com";
 
 interface GamePlayer {
   id: string;
@@ -18,11 +22,30 @@ interface GamePlayer {
   comprovante_status?: string;
   comprovante_observacao?: string;
   valor_pago?: number;
-  games?: { data_jogo: string; valor_avulso?: number };
-  users?: { nome: string };
+  games?: { data_jogo: string };
+  users?: { nome_completo: string };
 }
 
 type UploadStep = "idle" | "uploading" | "analyzing" | "done" | "error";
+
+type AnalysisResult = {
+  isPix: boolean;
+  valor?: number;
+  data?: string;
+  destinatario?: string;
+  confianca: "alta" | "media" | "baixa";
+  observacao: string;
+};
+
+function formatTipo(tipo: string) {
+  const map: Record<string, string> = {
+    mensalista_membro: "Mensalista",
+    mensalista_convidado: "Mensalista Convidado",
+    avulso_membro: "Avulso",
+    avulso_convidado: "Avulso Convidado",
+  };
+  return map[tipo] ?? tipo;
+}
 
 export default function PagamentoPage() {
   const router = useRouter();
@@ -33,15 +56,11 @@ export default function PagamentoPage() {
   const [step, setStep] = useState<UploadStep>("idle");
   const [preview, setPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [analysisResult, setAnalysisResult] = useState<{
-    isPix: boolean;
-    valor?: number;
-    data?: string;
-    destinatario?: string;
-    confianca: "alta" | "media" | "baixa";
-    observacao: string;
-  } | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
 
   useEffect(() => {
     loadPlayerData();
@@ -53,49 +72,37 @@ export default function PagamentoPage() {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      router.push("/login");
+      router.push("/");
       return;
     }
 
-    // Busca a inscrição mais recente do jogador (jogo ainda não realizado)
-    const { data, error } = await supabase
+    const { data, error: err } = await supabase
       .from("game_players")
-      .select(
-        `*, 
-        games(data_jogo, valor_avulso),
-        users(nome)`,
-      )
+      .select("*, games(data_jogo), users(nome_completo)")
       .eq("user_id", user.id)
       .eq("status", "confirmado")
       .order("criado_em", { ascending: false })
       .limit(1)
       .single();
 
-    if (error || !data) {
-      setError("Você não está inscrito em nenhuma partida.");
-    } else {
-      setPlayer(data);
-    }
+    if (err || !data) setError("Você não está inscrito em nenhuma partida.");
+    else setPlayer(data);
     setLoading(false);
   }
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setSelectedFile(file);
     setAnalysisResult(null);
     setError(null);
     setStep("idle");
-
     const reader = new FileReader();
     reader.onload = (ev) => setPreview(ev.target?.result as string);
     reader.readAsDataURL(file);
   }
 
-  async function analyzeComprovante(
-    base64: string,
-  ): Promise<typeof analysisResult> {
+  async function analyzeComprovante(base64: string): Promise<AnalysisResult> {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -116,54 +123,39 @@ export default function PagamentoPage() {
               },
               {
                 type: "text",
-                text: `Analise esta imagem e determine se é um comprovante de pagamento PIX válido.
-                
-Responda APENAS em JSON válido, sem nenhum texto adicional, sem markdown, sem backticks:
-{
-  "isPix": true ou false,
-  "valor": número ou null (ex: 30.00),
-  "data": "string da data encontrada ou null",
-  "destinatario": "nome do destinatário ou null",
-  "confianca": "alta" ou "media" ou "baixa",
-  "observacao": "breve explicação em português"
-}`,
+                text: `Analise esta imagem e determine se é um comprovante de pagamento PIX válido.\nResponda APENAS em JSON válido, sem texto adicional, sem markdown:\n{"isPix":true ou false,"valor":número ou null,"data":"string ou null","destinatario":"string ou null","confianca":"alta" ou "media" ou "baixa","observacao":"breve explicação em português"}`,
               },
             ],
           },
         ],
       }),
     });
-
     const data = await response.json();
-    const text = data.content?.[0]?.text || "";
-
     try {
-      const clean = text.replace(/```json|```/g, "").trim();
+      const clean = (data.content?.[0]?.text || "")
+        .replace(/```json|```/g, "")
+        .trim();
       return JSON.parse(clean);
     } catch {
       return {
         isPix: false,
         confianca: "baixa",
-        observacao: "Não foi possível analisar a imagem. Tente novamente.",
+        observacao: "Não foi possível analisar. Tente novamente.",
       };
     }
   }
 
   async function handleEnviarComprovante() {
     if (!selectedFile || !player || !preview) return;
-
     try {
       setStep("uploading");
       setError(null);
 
-      // 1. Upload para o Supabase Storage
       const ext = selectedFile.name.split(".").pop();
       const fileName = `${player.game_id}/${player.user_id}_${Date.now()}.${ext}`;
-
       const { error: uploadError } = await supabase.storage
         .from("comprovantes")
         .upload(fileName, selectedFile, { upsert: true });
-
       if (uploadError)
         throw new Error("Erro no upload: " + uploadError.message);
 
@@ -171,22 +163,16 @@ Responda APENAS em JSON válido, sem nenhum texto adicional, sem markdown, sem b
         .from("comprovantes")
         .getPublicUrl(fileName);
 
-      const publicUrl = urlData.publicUrl;
-
-      // 2. Analisar com IA
       setStep("analyzing");
       const result = await analyzeComprovante(preview);
       setAnalysisResult(result);
 
-      // 3. Salvar no banco com status e URL
       const { error: dbError } = await supabase.rpc("registrar_comprovante", {
         p_game_player_id: player.id,
-        p_comprovante_url: publicUrl,
+        p_comprovante_url: urlData.publicUrl,
       });
-
       if (dbError) throw new Error("Erro ao salvar: " + dbError.message);
 
-      // 4. Se IA aprovou com confiança alta, aprovar automaticamente
       if (result?.isPix && result.confianca === "alta") {
         await supabase.rpc("aprovar_comprovante", {
           p_game_player_id: player.id,
@@ -195,7 +181,6 @@ Responda APENAS em JSON válido, sem nenhum texto adicional, sem markdown, sem b
         });
         await loadPlayerData();
       }
-
       setStep("done");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erro desconhecido");
@@ -203,14 +188,17 @@ Responda APENAS em JSON válido, sem nenhum texto adicional, sem markdown, sem b
     }
   }
 
-  // --- RENDER ---
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-green-950 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+  function copiarPix() {
+    navigator.clipboard.writeText(CHAVE_PIX).catch(() => {
+      const el = document.createElement("textarea");
+      el.value = CHAVE_PIX;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+    });
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2000);
   }
 
   const jaPago = player?.payment_status === "pago";
@@ -218,309 +206,315 @@ Responda APENAS em JSON válido, sem nenhum texto adicional, sem markdown, sem b
   const rejeitado = player?.comprovante_status === "rejeitado";
 
   return (
-    <div className="min-h-screen bg-green-950 text-white px-4 py-8">
-      <div className="max-w-md mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <button
-            onClick={() => router.back()}
-            className="text-green-400 text-sm mb-4 flex items-center gap-1 hover:text-green-300"
-          >
-            ← Voltar
-          </button>
-          <h1 className="text-2xl font-bold">Pagamento via PIX</h1>
-          <p className="text-green-400 text-sm mt-1">
-            Envie o comprovante e confirmamos automaticamente
-          </p>
-        </div>
-
-        {!player ? (
-          <div className="bg-green-900/40 rounded-2xl p-6 text-center">
-            <p className="text-green-300">{error}</p>
-          </div>
-        ) : (
-          <>
-            {/* Status atual */}
-            <div className="bg-green-900/40 rounded-2xl p-5 mb-6">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-green-400 text-sm">
-                  Status do pagamento
-                </span>
-                <StatusBadge
-                  status={player.payment_status}
-                  comprobanteStatus={player.comprovante_status}
-                />
-              </div>
-              <p className="font-semibold text-lg">{player.users?.nome}</p>
-              <p className="text-green-400 text-sm">
-                Tipo: {formatTipo(player.tipo)}
+    <ProtectedRoute>
+      <div className="min-h-screen pb-28 bg-gray-50 dark:bg-gray-950">
+        {/* ── Header ── */}
+        <header className="sticky top-0 z-40 px-4 py-4 bg-gray-50 dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.back()}
+              className="w-9 h-9 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-gray-500 active:scale-95 transition-all"
+            >
+              ←
+            </button>
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-widest">
+                Pagamento
               </p>
-              {player.multa_aplicada && (
-                <div className="mt-3 bg-red-900/40 rounded-xl px-4 py-2 text-red-300 text-sm">
-                  ⚠️ Multa de 20% aplicada por atraso
-                </div>
-              )}
-              {rejeitado && (
-                <div className="mt-3 bg-red-900/40 rounded-xl px-4 py-2 text-red-300 text-sm">
-                  ❌ Comprovante rejeitado: {player.comprovante_observacao}
-                </div>
-              )}
+              <h1 className="font-display text-2xl leading-none text-gray-900 dark:text-white">
+                PIX
+              </h1>
             </div>
+          </div>
+          <ThemeToggle />
+        </header>
 
-            {/* Chave PIX */}
-            {!jaPago && (
-              <div className="bg-green-900/40 rounded-2xl p-5 mb-6">
-                <p className="text-green-400 text-sm mb-3">
-                  Chave PIX para pagamento
-                </p>
-                <ChavePix />
+        <div className="px-4 py-4 space-y-4 max-w-md mx-auto">
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-24 rounded-2xl animate-pulse bg-gray-200 dark:bg-gray-800"
+                />
+              ))}
+            </div>
+          ) : !player ? (
+            <div className="flex flex-col items-center py-20 text-center">
+              <p className="text-5xl mb-4">📋</p>
+              <p className="font-display text-xl text-gray-900 dark:text-white">
+                SEM INSCRIÇÃO ATIVA
+              </p>
+              <p className="text-sm text-gray-400 mt-2">
+                {error ?? "Você não está inscrito em nenhuma partida."}
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* ── Card status ── */}
+              <div
+                className={`rounded-2xl p-5 border ${
+                  jaPago
+                    ? "bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800/40"
+                    : aguardando
+                      ? "bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200 dark:border-yellow-800/40"
+                      : rejeitado
+                        ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/40"
+                        : "bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-base text-gray-900 dark:text-white">
+                      {player.users?.nome_completo ?? "—"}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {formatTipo(player.tipo)}
+                    </p>
+                  </div>
+                  {/* Badge */}
+                  <span
+                    className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-full font-bold ${
+                      jaPago
+                        ? "bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400"
+                        : aguardando
+                          ? "bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400"
+                          : rejeitado
+                            ? "bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400"
+                            : "bg-orange-100 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400"
+                    }`}
+                  >
+                    {jaPago
+                      ? "✅ Pago"
+                      : aguardando
+                        ? "⏳ Em análise"
+                        : rejeitado
+                          ? "✕ Rejeitado"
+                          : "⏰ Pendente"}
+                  </span>
+                </div>
+
+                {player.multa_aplicada && (
+                  <div className="mt-3 px-3 py-2 rounded-xl bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800/30">
+                    <p className="text-xs font-semibold text-yellow-700 dark:text-yellow-400">
+                      ⚠️ Multa de 20% aplicada por atraso
+                    </p>
+                  </div>
+                )}
+
+                {rejeitado && player.comprovante_observacao && (
+                  <div className="mt-3 px-3 py-2 rounded-xl bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30">
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      ❌ {player.comprovante_observacao}
+                    </p>
+                  </div>
+                )}
+
+                {jaPago && player.valor_pago && (
+                  <p className="mt-3 text-sm font-semibold text-green-600 dark:text-green-400">
+                    Valor pago: R$ {Number(player.valor_pago).toFixed(2)}
+                  </p>
+                )}
               </div>
-            )}
 
-            {/* Área de upload */}
-            {!jaPago && !aguardando && (
-              <div className="bg-green-900/40 rounded-2xl p-5 mb-6">
-                <p className="text-green-400 text-sm mb-4">
-                  Enviar comprovante
-                </p>
+              {/* ── Pago: sucesso ── */}
+              {jaPago && (
+                <div className="flex flex-col items-center py-10 text-center">
+                  <p className="text-6xl mb-4">✅</p>
+                  <p className="font-display text-2xl text-green-600 dark:text-green-400">
+                    PAGAMENTO CONFIRMADO!
+                  </p>
+                  <p className="text-sm text-gray-400 mt-2">
+                    Tudo certo para o jogo!
+                  </p>
+                </div>
+              )}
 
-                {/* Preview */}
-                {preview ? (
-                  <div className="relative mb-4">
-                    <img
-                      src={preview}
-                      alt="Comprovante"
-                      className="w-full rounded-xl object-cover max-h-64"
-                    />
+              {/* ── Aguardando análise ── */}
+              {aguardando && !jaPago && (
+                <div className="flex flex-col items-center py-10 text-center rounded-2xl bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800/30">
+                  <p className="text-5xl mb-3">⏳</p>
+                  <p className="font-display text-xl text-yellow-700 dark:text-yellow-400">
+                    COMPROVANTE EM ANÁLISE
+                  </p>
+                  <p className="text-sm text-yellow-600 dark:text-yellow-500 mt-2">
+                    O admin irá confirmar em breve
+                  </p>
+                </div>
+              )}
+
+              {/* ── Chave PIX ── */}
+              {!jaPago && !aguardando && (
+                <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 p-4">
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">
+                    Chave PIX
+                  </p>
+                  <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-400 mb-0.5">E-mail</p>
+                      <p className="font-mono text-sm text-gray-900 dark:text-white truncate">
+                        {CHAVE_PIX}
+                      </p>
+                    </div>
                     <button
-                      onClick={() => {
-                        setPreview(null);
-                        setSelectedFile(null);
-                        setAnalysisResult(null);
-                        setStep("idle");
-                      }}
-                      className="absolute top-2 right-2 bg-black/60 rounded-full w-7 h-7 flex items-center justify-center text-white text-sm"
+                      onClick={copiarPix}
+                      className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${
+                        copiado
+                          ? "bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400"
+                          : "bg-blue-600 text-white"
+                      }`}
                     >
-                      ✕
+                      {copiado ? "✓ Copiado" : "Copiar"}
                     </button>
                   </div>
-                ) : (
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full border-2 border-dashed border-green-700 rounded-xl py-10 flex flex-col items-center gap-2 text-green-400 hover:border-green-500 hover:text-green-300 transition-colors"
-                  >
-                    <span className="text-3xl">📎</span>
-                    <span className="text-sm">
-                      Toque para selecionar a foto
-                    </span>
-                    <span className="text-xs text-green-600">
-                      JPG, PNG, PDF — máx. 5MB
-                    </span>
-                  </button>
-                )}
+                </div>
+              )}
 
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,.pdf"
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
-
-                {/* Resultado da análise */}
-                {analysisResult && step === "done" && (
-                  <AnalysisCard result={analysisResult} />
-                )}
-
-                {/* Botão de envio */}
-                {selectedFile && step !== "done" && (
-                  <button
-                    onClick={handleEnviarComprovante}
-                    disabled={step === "uploading" || step === "analyzing"}
-                    className="w-full mt-4 bg-green-600 hover:bg-green-500 disabled:bg-green-800 disabled:text-green-600 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
-                  >
-                    {step === "uploading" && (
-                      <>
-                        <Spinner /> Enviando...
-                      </>
-                    )}
-                    {step === "analyzing" && (
-                      <>
-                        <Spinner /> Analisando com IA...
-                      </>
-                    )}
-                    {(step === "idle" || step === "error") &&
-                      "Enviar Comprovante"}
-                  </button>
-                )}
-
-                {error && step === "error" && (
-                  <p className="text-red-400 text-sm mt-3 text-center">
-                    {error}
+              {/* ── Upload comprovante ── */}
+              {!jaPago && !aguardando && (
+                <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 p-4 space-y-4">
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                    Enviar comprovante
                   </p>
-                )}
-              </div>
-            )}
 
-            {/* Aguardando análise manual */}
-            {aguardando && (
-              <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-2xl p-5 text-center">
-                <p className="text-2xl mb-2">⏳</p>
-                <p className="font-semibold text-yellow-300">
-                  Comprovante em análise
-                </p>
-                <p className="text-yellow-400/70 text-sm mt-1">
-                  O admin irá confirmar em breve
-                </p>
-              </div>
-            )}
+                  {preview ? (
+                    <div className="relative">
+                      <img
+                        src={preview}
+                        alt="Comprovante"
+                        className="w-full rounded-xl object-cover max-h-64"
+                      />
+                      <button
+                        onClick={() => {
+                          setPreview(null);
+                          setSelectedFile(null);
+                          setAnalysisResult(null);
+                          setStep("idle");
+                        }}
+                        className="absolute top-2 right-2 bg-black/60 rounded-full w-7 h-7 flex items-center justify-center text-white text-sm active:scale-95"
+                      >
+                        ✕
+                      </button>
+                      {/* Overlay analisando */}
+                      {step === "analyzing" && (
+                        <div className="absolute inset-0 bg-black/60 rounded-xl flex flex-col items-center justify-center gap-2">
+                          <Spinner />
+                          <p className="text-white text-sm font-semibold">
+                            IA analisando...
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl py-10 flex flex-col items-center gap-2 text-gray-400 hover:border-blue-300 dark:hover:border-blue-700 transition-colors active:scale-[0.98]"
+                    >
+                      <span className="text-3xl">📎</span>
+                      <span className="text-sm">
+                        Toque para selecionar a foto
+                      </span>
+                      <span className="text-xs text-gray-300 dark:text-gray-600">
+                        JPG, PNG, PDF — máx. 5MB
+                      </span>
+                    </button>
+                  )}
 
-            {/* Pago */}
-            {jaPago && (
-              <div className="bg-green-800/40 border border-green-600/50 rounded-2xl p-6 text-center">
-                <p className="text-4xl mb-3">✅</p>
-                <p className="font-bold text-xl text-green-300">
-                  Pagamento confirmado!
-                </p>
-                {player.valor_pago && (
-                  <p className="text-green-400 mt-1">
-                    Valor: R$ {Number(player.valor_pago).toFixed(2)}
-                  </p>
-                )}
-              </div>
-            )}
-          </>
-        )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+
+                  {/* Resultado da análise */}
+                  {analysisResult && step === "done" && (
+                    <div
+                      className={`rounded-xl p-4 border ${
+                        analysisResult.confianca === "alta"
+                          ? "bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800/30 text-green-700 dark:text-green-400"
+                          : analysisResult.confianca === "media"
+                            ? "bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200 dark:border-yellow-800/30 text-yellow-700 dark:text-yellow-400"
+                            : "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/30 text-red-700 dark:text-red-400"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span>{analysisResult.isPix ? "✅" : "❌"}</span>
+                        <span className="font-semibold text-sm">
+                          {analysisResult.isPix
+                            ? "Comprovante PIX detectado"
+                            : "Não parece um comprovante PIX"}
+                        </span>
+                        <span className="ml-auto text-xs opacity-70">
+                          Confiança: {analysisResult.confianca}
+                        </span>
+                      </div>
+                      {analysisResult.valor && (
+                        <p className="text-sm">
+                          💰 Valor: R$ {analysisResult.valor.toFixed(2)}
+                        </p>
+                      )}
+                      {analysisResult.data && (
+                        <p className="text-sm">
+                          📅 Data: {analysisResult.data}
+                        </p>
+                      )}
+                      {analysisResult.destinatario && (
+                        <p className="text-sm">
+                          👤 Destinatário: {analysisResult.destinatario}
+                        </p>
+                      )}
+                      <p className="text-xs mt-2 opacity-80">
+                        {analysisResult.observacao}
+                      </p>
+                      {analysisResult.confianca !== "alta" &&
+                        analysisResult.isPix && (
+                          <p className="text-xs mt-1 opacity-60">
+                            O admin irá confirmar manualmente.
+                          </p>
+                        )}
+                    </div>
+                  )}
+
+                  {/* Botão enviar */}
+                  {selectedFile && step !== "done" && (
+                    <button
+                      onClick={handleEnviarComprovante}
+                      disabled={step === "uploading" || step === "analyzing"}
+                      className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 text-white font-semibold py-3.5 rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                    >
+                      {step === "uploading" ? (
+                        <>
+                          <Spinner /> Enviando...
+                        </>
+                      ) : step === "analyzing" ? (
+                        <>
+                          <Spinner /> Analisando com IA...
+                        </>
+                      ) : (
+                        "Enviar Comprovante"
+                      )}
+                    </button>
+                  )}
+
+                  {error && step === "error" && (
+                    <p className="text-red-500 text-sm text-center">{error}</p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <BottomNav />
       </div>
-    </div>
-  );
-}
-
-// ── Sub-componentes ──────────────────────────────────
-
-function ChavePix() {
-  const [copiado, setCopiado] = useState(false);
-  // Troque pela sua chave PIX real
-  const CHAVE_PIX = "futebollarcristo@email.com";
-
-  function copiar() {
-    navigator.clipboard.writeText(CHAVE_PIX);
-    setCopiado(true);
-    setTimeout(() => setCopiado(false), 2000);
-  }
-
-  return (
-    <div className="flex items-center gap-3 bg-green-950/60 rounded-xl px-4 py-3">
-      <div className="flex-1">
-        <p className="text-xs text-green-500 mb-0.5">E-mail / chave</p>
-        <p className="font-mono text-sm text-white">{CHAVE_PIX}</p>
-      </div>
-      <button
-        onClick={copiar}
-        className="bg-green-700 hover:bg-green-600 px-3 py-1.5 rounded-lg text-sm transition-colors"
-      >
-        {copiado ? "✓ Copiado" : "Copiar"}
-      </button>
-    </div>
-  );
-}
-
-function StatusBadge({
-  status,
-  comprobanteStatus,
-}: {
-  status: string;
-  comprobanteStatus?: string;
-}) {
-  if (status === "pago")
-    return (
-      <span className="bg-green-700/60 text-green-300 text-xs px-3 py-1 rounded-full font-medium">
-        ✓ Pago
-      </span>
-    );
-  if (comprobanteStatus === "aguardando_analise")
-    return (
-      <span className="bg-yellow-700/60 text-yellow-300 text-xs px-3 py-1 rounded-full font-medium">
-        ⏳ Em análise
-      </span>
-    );
-  if (comprobanteStatus === "rejeitado")
-    return (
-      <span className="bg-red-700/60 text-red-300 text-xs px-3 py-1 rounded-full font-medium">
-        ✕ Rejeitado
-      </span>
-    );
-  return (
-    <span className="bg-orange-700/60 text-orange-300 text-xs px-3 py-1 rounded-full font-medium">
-      Pendente
-    </span>
-  );
-}
-
-function AnalysisCard({
-  result,
-}: {
-  result: NonNullable<
-    ReturnType<
-      () => {
-        isPix: boolean;
-        valor?: number;
-        data?: string;
-        destinatario?: string;
-        confianca: "alta" | "media" | "baixa";
-        observacao: string;
-      }
-    >
-  >;
-}) {
-  const colors = {
-    alta: "border-green-600/50 bg-green-900/30 text-green-300",
-    media: "border-yellow-600/50 bg-yellow-900/30 text-yellow-300",
-    baixa: "border-red-600/50 bg-red-900/30 text-red-300",
-  };
-
-  return (
-    <div className={`mt-4 border rounded-xl p-4 ${colors[result.confianca]}`}>
-      <div className="flex items-center gap-2 mb-2">
-        <span>{result.isPix ? "✅" : "❌"}</span>
-        <span className="font-semibold text-sm">
-          {result.isPix
-            ? "Comprovante PIX detectado"
-            : "Não parece um comprovante PIX"}
-        </span>
-        <span className="ml-auto text-xs opacity-70">
-          Confiança: {result.confianca}
-        </span>
-      </div>
-      {result.valor && (
-        <p className="text-sm">💰 Valor: R$ {result.valor.toFixed(2)}</p>
-      )}
-      {result.data && <p className="text-sm">📅 Data: {result.data}</p>}
-      {result.destinatario && (
-        <p className="text-sm">👤 Destinatário: {result.destinatario}</p>
-      )}
-      <p className="text-xs mt-2 opacity-80">{result.observacao}</p>
-      {result.confianca !== "alta" && result.isPix && (
-        <p className="text-xs mt-2 opacity-60">
-          O admin irá confirmar manualmente.
-        </p>
-      )}
-    </div>
+    </ProtectedRoute>
   );
 }
 
 function Spinner() {
   return (
-    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
   );
-}
-
-function formatTipo(tipo: string) {
-  const map: Record<string, string> = {
-    mensalista_membro: "Mensalista",
-    mensalista_convidado: "Mensalista Convidado",
-    avulso_membro: "Avulso",
-    avulso_convidado: "Avulso Convidado",
-  };
-  return map[tipo] ?? tipo;
 }

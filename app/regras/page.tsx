@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import BottomNav from "@/components/layout/BottomNav";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 
 type Aba = "jogo" | "pagamento";
 
@@ -115,83 +117,80 @@ export default function RegrasPage() {
   const regras = aba === "jogo" ? REGRAS_JOGO : REGRAS_PAGAMENTO;
 
   return (
-    <div className="min-h-screen bg-green-950 text-white px-4 py-8">
-      <div className="max-w-md mx-auto">
-        {/* Header */}
-        <div className="mb-6">
+    <div className="min-h-screen pb-28 bg-gray-50 dark:bg-gray-950">
+      {/* ── Header ── */}
+      <header className="sticky top-0 z-40 px-4 py-4 bg-gray-50 dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => router.back()}
-            className="text-green-400 text-sm mb-3 flex items-center gap-1 hover:text-green-300"
+            className="w-9 h-9 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-gray-500 active:scale-95 transition-all"
           >
-            ← Voltar
+            ←
           </button>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-700 rounded-xl flex items-center justify-center text-xl">
-              📋
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">Regulamento</h1>
-              <p className="text-green-400 text-sm">Futebol Lar Cristão</p>
-            </div>
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-widest">
+              Futebol Lar Cristão
+            </p>
+            <h1 className="font-display text-2xl leading-none text-gray-900 dark:text-white">
+              REGULAMENTO
+            </h1>
           </div>
         </div>
+        <ThemeToggle />
+      </header>
 
-        {/* Abas */}
-        <div className="grid grid-cols-2 gap-2 mb-6">
-          <button
-            onClick={() => {
-              setAba("jogo");
-              setAberto(null);
-            }}
-            className={`py-3 rounded-xl text-sm font-semibold transition-colors border ${
-              aba === "jogo"
-                ? "bg-green-700 border-green-600 text-white"
-                : "bg-green-900/30 border-green-800/40 text-green-400 hover:border-green-600"
-            }`}
-          >
-            ⚽ Regras do Jogo
-          </button>
-          <button
-            onClick={() => {
-              setAba("pagamento");
-              setAberto(null);
-            }}
-            className={`py-3 rounded-xl text-sm font-semibold transition-colors border ${
-              aba === "pagamento"
-                ? "bg-green-700 border-green-600 text-white"
-                : "bg-green-900/30 border-green-800/40 text-green-400 hover:border-green-600"
-            }`}
-          >
-            💰 Pagamentos
-          </button>
+      <div className="px-4 py-4 space-y-4 max-w-md mx-auto">
+        {/* ── Tabs ── */}
+        <div className="grid grid-cols-2 gap-2">
+          {(
+            [
+              { key: "jogo", label: "⚽ Regras do Jogo" },
+              { key: "pagamento", label: "💰 Pagamentos" },
+            ] as { key: Aba; label: string }[]
+          ).map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => {
+                setAba(tab.key);
+                setAberto(null);
+              }}
+              className={`py-3 rounded-xl text-sm font-semibold transition-all border ${
+                aba === tab.key
+                  ? "bg-blue-600 border-blue-600 text-white"
+                  : "bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-white"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
-        {/* Lista de regras (accordion) */}
+        {/* ── Accordion ── */}
         <div className="space-y-2">
           {regras.map((regra, i) => (
             <div
               key={i}
-              className="bg-green-900/40 border border-green-800/40 rounded-2xl overflow-hidden"
+              className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl overflow-hidden"
             >
               <button
                 onClick={() => setAberto(aberto === i ? null : i)}
-                className="w-full flex items-center gap-3 px-4 py-4 text-left hover:bg-green-800/20 transition-colors"
+                className="w-full flex items-center gap-3 px-4 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
               >
                 <span className="text-xl flex-shrink-0">{regra.icon}</span>
-                <p className="flex-1 font-medium text-white text-sm">
+                <p className="flex-1 font-semibold text-gray-900 dark:text-white text-sm">
                   {regra.titulo}
                 </p>
                 <span
-                  className={`text-green-500 text-xs transition-transform duration-200 ${aberto === i ? "rotate-180" : ""}`}
+                  className={`text-gray-400 text-xs transition-transform duration-200 ${aberto === i ? "rotate-180" : ""}`}
                 >
                   ▼
                 </span>
               </button>
 
               {aberto === i && (
-                <div className="px-4 pb-4 pt-0">
-                  <div className="border-t border-green-800/40 pt-3">
-                    <p className="text-green-300 text-sm leading-relaxed">
+                <div className="px-4 pb-4">
+                  <div className="border-t border-gray-100 dark:border-gray-800 pt-3">
+                    <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">
                       {regra.descricao}
                     </p>
                   </div>
@@ -201,13 +200,15 @@ export default function RegrasPage() {
           ))}
         </div>
 
-        {/* Rodapé */}
-        <div className="mt-8 bg-green-900/20 border border-green-900/40 rounded-2xl p-4 text-center">
-          <p className="text-green-600 text-xs">
+        {/* ── Rodapé ── */}
+        <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 p-4 text-center">
+          <p className="text-gray-400 text-xs">
             Dúvidas? Fale com o administrador do grupo.
           </p>
         </div>
       </div>
+
+      <BottomNav />
     </div>
   );
 }
