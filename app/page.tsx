@@ -5,19 +5,14 @@ import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
-type Modo = "inicial" | "entrar" | "cadastrar";
-
 export default function Home() {
   const router = useRouter();
-  const [modo, setModo] = useState<Modo>("inicial");
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
-  const [nome, setNome] = useState("");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [sucesso, setSucesso] = useState<string | null>(null);
+  const [expandido, setExpandido] = useState(false);
 
-  // ── Google OAuth ──────────────────────────────────
   async function handleGoogle() {
     setLoading(true);
     setErro(null);
@@ -31,7 +26,6 @@ export default function Home() {
     }
   }
 
-  // ── Login com email ───────────────────────────────
   async function handleLogin() {
     if (!email || !senha) {
       setErro("Preencha e-mail e senha.");
@@ -51,60 +45,6 @@ export default function Home() {
     }
   }
 
-  // ── Cadastro com email ────────────────────────────
-  async function handleCadastro() {
-    if (!nome || !email || !senha) {
-      setErro("Preencha todos os campos.");
-      return;
-    }
-    if (senha.length < 6) {
-      setErro("A senha deve ter pelo menos 6 caracteres.");
-      return;
-    }
-    setLoading(true);
-    setErro(null);
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password: senha,
-      options: { data: { nome_completo: nome } },
-    });
-
-    if (error) {
-      setErro(error.message);
-      setLoading(false);
-      return;
-    }
-
-    // Inserir perfil na tabela users
-    if (data.user) {
-      await supabase.from("users").upsert({
-        id: data.user.id,
-        nome_completo: nome,
-        email,
-        tipo: "avulso",
-        posicao: "linha",
-        status: "pendente",
-        role: "jogador",
-      });
-    }
-
-    setSucesso(
-      "Cadastro realizado! Verifique seu e-mail para confirmar a conta.",
-    );
-    setLoading(false);
-  }
-
-  function voltar() {
-    setModo("inicial");
-    setErro(null);
-    setSucesso(null);
-    setEmail("");
-    setSenha("");
-    setNome("");
-  }
-
-  // ── RENDER ────────────────────────────────────────
   return (
     <main className="flex min-h-dvh flex-col bg-white">
       {/* Imagem topo */}
@@ -120,7 +60,6 @@ export default function Home() {
         <div className="absolute inset-x-0 bottom-0 z-20 h-32 bg-gradient-to-t from-white to-transparent" />
       </div>
 
-      {/* Formulário */}
       <section className="relative z-30 -mt-12 flex w-full flex-1 flex-col items-center self-center px-6 pb-8 sm:max-w-[400px]">
         {/* Logo */}
         <div className="mb-4 flex items-center gap-3">
@@ -132,156 +71,72 @@ export default function Home() {
           </h1>
         </div>
 
-        {/* Heading */}
         <h2 className="mb-6 text-center text-3xl font-black leading-[1.1] tracking-tight text-black">
           Aqui o seu futebol
           <br />é comunhão.
         </h2>
 
-        {/* ── MODO INICIAL ── */}
-        {modo === "inicial" && (
-          <div className="w-full space-y-3">
-            <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="w-full space-y-3">
+          {/* Form email/senha */}
+          {!expandido ? (
+            <button
+              onClick={() => setExpandido(true)}
+              className="w-full rounded-xl bg-[#00D177] py-4 font-bold text-black shadow-md shadow-[#00D177]/20 transition-all hover:bg-[#00b567] active:scale-95"
+            >
+              Entrar
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <CampoTexto
+                label="E-mail"
+                type="email"
+                value={email}
+                onChange={setEmail}
+                placeholder="seu@email.com"
+              />
+              <CampoTexto
+                label="Senha"
+                type="password"
+                value={senha}
+                onChange={setSenha}
+                placeholder="••••••••"
+                onEnter={handleLogin}
+              />
+              {erro && <MensagemErro texto={erro} />}
               <button
-                onClick={() => setModo("entrar")}
-                className="flex-1 rounded-xl bg-[#00D177] py-4 font-bold text-black shadow-md shadow-[#00D177]/20 transition-all duration-200 hover:bg-[#00b567] active:scale-95"
+                onClick={handleLogin}
+                disabled={loading}
+                className="w-full rounded-xl bg-[#00D177] py-4 font-bold text-black shadow-md shadow-[#00D177]/20 transition-all hover:bg-[#00b567] active:scale-95 disabled:opacity-60"
               >
-                Entrar
+                {loading ? <Spinner /> : "Entrar"}
               </button>
               <button
-                onClick={() => setModo("cadastrar")}
-                className="flex-1 rounded-xl bg-[#1A1A1A] py-4 font-bold text-white transition-all duration-200 hover:bg-black active:scale-95"
+                onClick={() => {
+                  setExpandido(false);
+                  setErro(null);
+                }}
+                className="w-full text-sm text-gray-400 hover:text-gray-600 transition-colors"
               >
-                Sou novo por aqui
+                ← Voltar
               </button>
             </div>
+          )}
+          {/* Botão Google */}
+          <BotaoGoogle onClick={handleGoogle} loading={loading} />
+        </div>
 
-            <BotaoGoogle onClick={handleGoogle} loading={loading} />
-          </div>
-        )}
-
-        {/* ── MODO ENTRAR ── */}
-        {modo === "entrar" && (
-          <div className="w-full space-y-3">
-            <CampoTexto
-              label="E-mail"
-              type="email"
-              value={email}
-              onChange={setEmail}
-              placeholder="seu@email.com"
-            />
-            <CampoTexto
-              label="Senha"
-              type="password"
-              value={senha}
-              onChange={setSenha}
-              placeholder="••••••••"
-              onEnter={handleLogin}
-            />
-
-            {erro && <MensagemErro texto={erro} />}
-
-            <button
-              onClick={handleLogin}
-              disabled={loading}
-              className="w-full rounded-xl bg-[#00D177] py-4 font-bold text-black shadow-md shadow-[#00D177]/20 transition-all duration-200 hover:bg-[#00b567] active:scale-95 disabled:opacity-60"
-            >
-              {loading ? <Spinner /> : "Entrar"}
-            </button>
-
-            <BotaoGoogle onClick={handleGoogle} loading={loading} />
-
-            <button
-              onClick={voltar}
-              className="w-full pt-1 text-sm text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              ← Voltar
-            </button>
-          </div>
-        )}
-
-        {/* ── MODO CADASTRAR ── */}
-        {modo === "cadastrar" && (
-          <div className="w-full space-y-3">
-            {sucesso ? (
-              <div className="rounded-xl bg-green-50 border border-green-200 p-4 text-center">
-                <p className="text-2xl mb-2">✅</p>
-                <p className="text-sm font-semibold text-green-700">
-                  {sucesso}
-                </p>
-                <button
-                  onClick={voltar}
-                  className="mt-4 w-full rounded-xl bg-[#004D98] py-3 font-bold text-white transition-all active:scale-95"
-                >
-                  Fazer login
-                </button>
-              </div>
-            ) : (
-              <>
-                <CampoTexto
-                  label="Nome completo"
-                  type="text"
-                  value={nome}
-                  onChange={setNome}
-                  placeholder="Seu nome"
-                />
-                <CampoTexto
-                  label="E-mail"
-                  type="email"
-                  value={email}
-                  onChange={setEmail}
-                  placeholder="seu@email.com"
-                />
-                <CampoTexto
-                  label="Senha"
-                  type="password"
-                  value={senha}
-                  onChange={setSenha}
-                  placeholder="Mínimo 6 caracteres"
-                  onEnter={handleCadastro}
-                />
-
-                {erro && <MensagemErro texto={erro} />}
-
-                <button
-                  onClick={handleCadastro}
-                  disabled={loading}
-                  className="w-full rounded-xl bg-[#1A1A1A] py-4 font-bold text-white transition-all duration-200 hover:bg-black active:scale-95 disabled:opacity-60"
-                >
-                  {loading ? <Spinner dark /> : "Criar minha conta"}
-                </button>
-
-                <BotaoGoogle onClick={handleGoogle} loading={loading} />
-
-                <button
-                  onClick={voltar}
-                  className="w-full pt-1 text-sm text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  ← Voltar
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Footer */}
-        {modo === "inicial" && (
-          <p className="mt-auto pt-10 text-center text-sm text-gray-400">
-            Não tem uma conta?{" "}
-            <button
-              onClick={() => setModo("cadastrar")}
-              className="font-bold text-[#004D98] hover:underline"
-            >
-              Cadastre-se.
-            </button>
-          </p>
-        )}
+        {/* Rodapé — convite */}
+        <p className="mt-auto pt-10 text-center text-sm text-gray-400">
+          Para se cadastrar, solicite um{" "}
+          <span className="font-bold text-[#004D98]">
+            convite ao administrador
+          </span>
+          .
+        </p>
       </section>
     </main>
   );
 }
-
-// ── Sub-componentes ────────────────────────────────
 
 function BotaoGoogle({
   onClick,
@@ -294,7 +149,7 @@ function BotaoGoogle({
     <button
       onClick={onClick}
       disabled={loading}
-      className="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-gray-100 py-4 transition-all duration-200 hover:bg-gray-50 active:scale-95 disabled:opacity-60"
+      className="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-gray-100 py-4 transition-all hover:bg-gray-50 active:scale-95 disabled:opacity-60"
     >
       <svg width="20" height="20" viewBox="0 0 24 24">
         <path
@@ -359,14 +214,10 @@ function MensagemErro({ texto }: { texto: string }) {
   );
 }
 
-function Spinner({ dark = false }: { dark?: boolean }) {
+function Spinner() {
   return (
     <span className="flex items-center justify-center gap-2">
-      <span
-        className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${
-          dark ? "border-white" : "border-black"
-        }`}
-      />
+      <span className="w-4 h-4 border-2 border-t-transparent border-black rounded-full animate-spin" />
       Aguarde...
     </span>
   );

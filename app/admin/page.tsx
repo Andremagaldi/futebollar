@@ -18,6 +18,7 @@ interface GameStats {
   pagos: number;
   pendentes: number;
   comprovantes_pendentes: number;
+  pedidos_pendentes: number;
 }
 
 export default function AdminPage() {
@@ -58,9 +59,16 @@ export default function AdminPage() {
         (p) => p.status === "confirmado" && p.pagamento_status !== "pago",
       ).length ?? 0;
 
-    // Comprovantes aguardando revisão
+    // Comprovantes aguardando revisão (via game_players)
     const { count: compPendentes } = await supabase
-      .from("pix_comprovantes")
+      .from("game_players")
+      .select("*", { count: "exact", head: true })
+      .eq("game_id", g.id)
+      .eq("comprovante_status", "aguardando_analise");
+
+    // Cadastros pendentes de aprovação
+    const { count: pedidosPendentes } = await supabase
+      .from("users")
       .select("*", { count: "exact", head: true })
       .eq("status", "pendente");
 
@@ -74,6 +82,7 @@ export default function AdminPage() {
       pagos,
       pendentes,
       comprovantes_pendentes: compPendentes ?? 0,
+      pedidos_pendentes: pedidosPendentes ?? 0,
     });
     setLoading(false);
   }
@@ -152,6 +161,19 @@ export default function AdminPage() {
       desc: "Gerenciar acesso",
       badge: null,
       alert: false,
+    },
+    {
+      href: "/admin/pedidos",
+      icon: "👥",
+      title: "Pedidos",
+      desc: "Aprovar novos cadastros",
+      badge: stats?.pedidos_pendentes
+        ? {
+            label: `${stats.pedidos_pendentes} novo${stats.pedidos_pendentes > 1 ? "s" : ""}`,
+            color: "red",
+          }
+        : { label: "Em dia", color: "green" },
+      alert: (stats?.pedidos_pendentes ?? 0) > 0,
     },
     {
       href: "/admin/gerente",
