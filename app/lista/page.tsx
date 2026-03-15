@@ -8,27 +8,23 @@ import BottomNav from "@/components/layout/BottomNav";
 
 const LIMITE_JOGADORES = 20;
 
-type Game = {
-  id: string;
-  data_jogo: string;
-  status_lista: string;
-};
+type Game = { id: string; data_jogo: string; status_lista: string };
 
 type Player = {
   id: string;
   status: "confirmado" | "espera";
   ordem_entrada: number;
-  users: { nome_completo: string } | null;
+  users: { nome_completo: string; foto_url?: string | null } | null;
 };
 
 type PlayerRow = Omit<Player, "users"> & {
-  users: { nome_completo: string } | { nome_completo: string }[] | null;
+  users:
+    | { nome_completo: string; foto_url?: string | null }
+    | { nome_completo: string; foto_url?: string | null }[]
+    | null;
 };
 
-type MyEntry = {
-  id: string;
-  status: "confirmado" | "espera";
-};
+type MyEntry = { id: string; status: "confirmado" | "espera" };
 
 export default function ListaPage() {
   const [game, setGame] = useState<Game | null>(null);
@@ -63,7 +59,7 @@ export default function ListaPage() {
     const { data: playersData } = await supabase
       .from("game_players")
       .select(
-        `id, status, ordem_entrada, user_id, users!game_players_user_id_fkey (nome_completo)`,
+        `id, status, ordem_entrada, user_id, users!game_players_user_id_fkey (nome_completo, foto_url)`,
       )
       .eq("game_id", currentGame.id)
       .order("ordem_entrada", { ascending: true });
@@ -73,7 +69,6 @@ export default function ListaPage() {
         ...p,
         users: Array.isArray(p.users) ? (p.users[0] ?? null) : p.users,
       })) ?? [];
-
     setPlayers(normalized);
 
     const {
@@ -97,11 +92,8 @@ export default function ListaPage() {
     const { error } = await supabase.rpc("entrar_na_lista", {
       p_game_id: game.id,
     });
-    if (error) {
-      alert(error.message);
-    } else {
-      await fetchData();
-    }
+    if (error) alert(error.message);
+    else await fetchData();
     setActionLoading(false);
   }
 
@@ -111,11 +103,8 @@ export default function ListaPage() {
     const { error } = await supabase.rpc("sair_da_lista", {
       p_game_id: game.id,
     });
-    if (error) {
-      alert(error.message);
-    } else {
-      await fetchData();
-    }
+    if (error) alert(error.message);
+    else await fetchData();
     setActionLoading(false);
   }
 
@@ -136,7 +125,6 @@ export default function ListaPage() {
           }
         />
 
-        {/* ── Loading ── */}
         {loading && (
           <div className="px-4 pt-6 space-y-3">
             <div className="h-32 rounded-2xl animate-pulse bg-gray-200 dark:bg-gray-800" />
@@ -149,7 +137,6 @@ export default function ListaPage() {
           </div>
         )}
 
-        {/* ── Sem jogo ── */}
         {!loading && !game && (
           <div className="flex flex-col items-center justify-center py-24 px-8 text-center">
             <p className="text-5xl mb-4">📅</p>
@@ -169,7 +156,6 @@ export default function ListaPage() {
               <div className="rounded-2xl p-4 relative overflow-hidden bg-gradient-to-br from-blue-700 to-blue-900 shadow-lg">
                 <div className="absolute -right-6 -top-6 w-32 h-32 rounded-full bg-white opacity-10" />
                 <div className="absolute right-10 -bottom-8 w-24 h-24 rounded-full bg-white opacity-10" />
-
                 <div className="relative z-10 flex items-end justify-between">
                   <div>
                     <p className="text-white/60 text-xs uppercase tracking-widest mb-1">
@@ -202,7 +188,7 @@ export default function ListaPage() {
               </div>
             </div>
 
-            {/* ── Status do jogador + ação ── */}
+            {/* ── Status + ação ── */}
             <div className="px-4 mb-4">
               {myEntry ? (
                 <div
@@ -305,6 +291,9 @@ export default function ListaPage() {
                     aba === "espera"
                       ? confirmadosList.length + index + 1
                       : index + 1;
+                  const nome = player.users?.nome_completo ?? "—";
+                  const foto = player.users?.foto_url;
+
                   return (
                     <div
                       key={player.id}
@@ -327,15 +316,25 @@ export default function ListaPage() {
                           : `#${numero}`}
                       </div>
 
-                      {/* Avatar */}
-                      <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm uppercase text-white flex-shrink-0 ${
-                          isMe
-                            ? "bg-gradient-to-br from-blue-500 to-blue-700"
-                            : "bg-gradient-to-br from-gray-400 to-gray-600"
-                        }`}
-                      >
-                        {player.users?.nome_completo?.charAt(0) ?? "?"}
+                      {/* Avatar com foto */}
+                      <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border border-gray-200 dark:border-gray-700">
+                        {foto ? (
+                          <img
+                            src={foto}
+                            alt={nome}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div
+                            className={`w-full h-full flex items-center justify-center font-bold text-sm uppercase text-white ${
+                              isMe
+                                ? "bg-gradient-to-br from-blue-500 to-blue-700"
+                                : "bg-gradient-to-br from-gray-400 to-gray-600"
+                            }`}
+                          >
+                            {nome.charAt(0)}
+                          </div>
+                        )}
                       </div>
 
                       {/* Nome */}
@@ -347,7 +346,7 @@ export default function ListaPage() {
                               : "text-gray-900 dark:text-white"
                           }`}
                         >
-                          {player.users?.nome_completo ?? "—"}
+                          {nome}
                           {isMe && (
                             <span className="ml-2 text-xs font-normal text-blue-400">
                               ← você
@@ -356,7 +355,7 @@ export default function ListaPage() {
                         </p>
                       </div>
 
-                      {/* Badge status */}
+                      {/* Badge */}
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
                           player.status === "confirmado"

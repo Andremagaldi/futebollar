@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -28,6 +28,12 @@ export default function ConvitePage() {
   const [salvandoPerfil, setSalvandoPerfil] = useState(false);
   const [erroPerfil, setErroPerfil] = useState<string | null>(null);
 
+  // Foto
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fotoFile, setFotoFile] = useState<File | null>(null);
+  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const [uploadandoFoto, setUploadandoFoto] = useState(false);
+
   useEffect(() => {
     validarToken();
   }, [token]);
@@ -36,7 +42,6 @@ export default function ConvitePage() {
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === "SIGNED_IN" && session) {
-          // Recupera conviteId do localStorage se perdeu após redirect Google
           const savedConviteId = localStorage.getItem("convite_id");
           if (savedConviteId) setConviteId(savedConviteId);
 
@@ -46,11 +51,9 @@ export default function ConvitePage() {
             .eq("id", session.user.id)
             .single();
 
-          if (user?.nome_completo) {
-            setStep("aguardando");
-          } else {
-            const nome = session.user.user_metadata?.full_name ?? "";
-            setNomeCompleto(nome);
+          if (user?.nome_completo) setStep("aguardando");
+          else {
+            setNomeCompleto(session.user.user_metadata?.full_name ?? "");
             setStep("perfil");
           }
         }
@@ -63,21 +66,17 @@ export default function ConvitePage() {
     const { data, error } = await supabase.rpc("validar_convite", {
       p_token: token,
     });
-
     if (error || !data || data.length === 0) {
       setMotivoInvalido("Link inválido ou não encontrado.");
       setStep("invalido");
       return;
     }
-
     const resultado = data[0];
     if (!resultado.valido) {
       setMotivoInvalido(resultado.motivo);
       setStep("invalido");
       return;
     }
-
-    // Persiste no localStorage para sobreviver ao redirect do Google OAuth
     setConviteId(resultado.id);
     localStorage.setItem("convite_id", resultado.id);
 
@@ -90,9 +89,8 @@ export default function ConvitePage() {
         .select("nome_completo")
         .eq("id", session.user.id)
         .single();
-      if (userDb?.nome_completo) {
-        setStep("aguardando");
-      } else {
+      if (userDb?.nome_completo) setStep("aguardando");
+      else {
         setNomeCompleto(session.user.user_metadata?.full_name ?? "");
         setStep("perfil");
       }
@@ -116,7 +114,6 @@ export default function ConvitePage() {
     }
     setLoadingAuth(true);
     setErroAuth(null);
-
     if (modoAuth === "signup") {
       const { error } = await supabase.auth.signUp({ email, password: senha });
       if (error) {
@@ -138,6 +135,32 @@ export default function ConvitePage() {
     setLoadingAuth(false);
   }
 
+  function handleFotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFotoFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setFotoPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function uploadFoto(userId: string): Promise<string | null> {
+    if (!fotoFile) return null;
+    setUploadandoFoto(true);
+    const ext = fotoFile.name.split(".").pop();
+    const fileName = `${userId}.${ext}`;
+    const { error } = await supabase.storage
+      .from("avatars")
+      .upload(fileName, fotoFile, { upsert: true });
+    setUploadandoFoto(false);
+    if (error) {
+      console.error("Erro upload foto:", error.message);
+      return null;
+    }
+    const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
+    return data.publicUrl;
+  }
+
   async function salvarPerfil() {
     if (!nomeCompleto.trim() || !telefone.trim()) {
       setErroPerfil("Nome completo e celular são obrigatórios.");
@@ -155,6 +178,9 @@ export default function ConvitePage() {
       return;
     }
 
+    // Upload foto se tiver
+    const fotoUrl = await uploadFoto(session.user.id);
+
     // Upsert usuário
     const { error: userError } = await supabase.from("users").upsert({
       id: session.user.id,
@@ -170,6 +196,7 @@ export default function ConvitePage() {
       mvp_count: 0,
       is_admin: false,
       is_mensalista: tipo === "mensalista",
+      ...(fotoUrl ? { foto_url: fotoUrl } : {}),
     });
 
     if (userError) {
@@ -178,11 +205,10 @@ export default function ConvitePage() {
       return;
     }
 
-    // Recupera conviteId do localStorage como fallback
+    // Pedido de entrada
     const cId = conviteId ?? localStorage.getItem("convite_id");
-
     if (cId) {
-      const { error: pedidoError } = await supabase
+      await supabase
         .from("pedidos_entrada")
         .insert({
           convite_id: cId,
@@ -193,12 +219,10 @@ export default function ConvitePage() {
           categoria,
           tipo,
           user_id: session.user.id,
+        })
+        .then(({ error }) => {
+          if (error) console.error("Pedido:", error.message);
         });
-
-      if (pedidoError) {
-        console.error("Erro ao salvar pedido:", pedidoError.message);
-        // Não bloqueia o fluxo — só loga o erro
-      }
     }
 
     // Notifica admin
@@ -209,31 +233,28 @@ export default function ConvitePage() {
         body: JSON.stringify({
           titulo: "⚽ Novo pedido de entrada!",
           mensagem: `${nomeCompleto.split(" ")[0]} quer entrar no grupo. Toque para revisar.`,
-          url: `${window.location.origin}/admin/convites`,
+          url: `${window.location.origin}/admin/pedidos`,
         }),
       });
     } catch {
-      // Notificação falhou mas não bloqueia
+      /* não bloqueia */
     }
 
-    // Limpa localStorage
     localStorage.removeItem("convite_id");
-
     setSalvandoPerfil(false);
     setStep("aguardando");
   }
 
-  // ── RENDERS ──────────────────────────────────────
+  // ── RENDERS ──────────────────────────────────────────────────────
 
-  if (step === "validando") {
+  if (step === "validando")
     return (
       <div className="min-h-screen bg-[#080c20] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
       </div>
     );
-  }
 
-  if (step === "invalido") {
+  if (step === "invalido")
     return (
       <div className="min-h-screen bg-[#080c20] flex items-center justify-center px-4">
         <div className="text-center max-w-sm">
@@ -246,9 +267,8 @@ export default function ConvitePage() {
         </div>
       </div>
     );
-  }
 
-  if (step === "aguardando") {
+  if (step === "aguardando")
     return (
       <div className="min-h-screen bg-[#080c20] flex items-center justify-center px-4">
         <div className="text-center max-w-sm">
@@ -258,7 +278,7 @@ export default function ConvitePage() {
           </h1>
           <p className="text-blue-200 text-sm leading-relaxed">
             Seu cadastro foi registrado. O administrador irá analisar e
-            confirmar sua entrada no grupo em breve.
+            confirmar sua entrada em breve.
           </p>
           <p className="text-yellow-400 text-xs mt-4">
             Fique de olho no seu WhatsApp! ⚽
@@ -266,9 +286,8 @@ export default function ConvitePage() {
         </div>
       </div>
     );
-  }
 
-  if (step === "auth") {
+  if (step === "auth")
     return (
       <div className="min-h-screen bg-[#080c20] text-white px-4 py-10 flex items-center justify-center">
         <div className="w-full max-w-sm">
@@ -336,9 +355,7 @@ export default function ConvitePage() {
               placeholder="Senha (mín. 6 caracteres)"
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-white/30 focus:outline-none focus:border-yellow-500/50"
             />
-
             {erroAuth && <p className="text-red-400 text-xs">{erroAuth}</p>}
-
             <button
               onClick={loginEmail}
               disabled={loadingAuth}
@@ -353,7 +370,6 @@ export default function ConvitePage() {
                   ? "Criar conta"
                   : "Entrar"}
             </button>
-
             <button
               onClick={() => {
                 setModoAuth(modoAuth === "signup" ? "login" : "signup");
@@ -369,27 +385,79 @@ export default function ConvitePage() {
         </div>
       </div>
     );
-  }
 
-  if (step === "perfil") {
+  if (step === "perfil")
     return (
-      <div className="min-h-screen bg-[#080c20] text-white px-4 py-10">
+      <div className="min-h-screen bg-[#080c20] text-white px-4 py-10 pb-16">
         <div className="max-w-md mx-auto">
           <div className="text-center mb-8">
             <p className="text-3xl mb-2">👤</p>
             <h1 className="text-xl font-bold">Complete seu perfil</h1>
             <p className="text-blue-300 text-sm mt-1">
-              Quase lá! Preencha seus dados.
+              Preencha seus dados para entrar no grupo
             </p>
           </div>
 
           <div
-            className="space-y-4 rounded-2xl p-5"
+            className="space-y-5 rounded-2xl p-5"
             style={{
               background: "rgba(255,255,255,0.03)",
               border: "1px solid rgba(255,255,255,0.07)",
             }}
           >
+            {/* ── Foto de perfil ── */}
+            <div>
+              <label className="text-white/40 text-xs mb-3 block">
+                Foto de perfil
+              </label>
+              <div className="flex items-center gap-4">
+                {/* Avatar preview */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-20 h-20 rounded-2xl overflow-hidden flex-shrink-0 border-2 border-white/10 hover:border-yellow-500/50 transition-colors relative group"
+                >
+                  {fotoPreview ? (
+                    <img
+                      src={fotoPreview}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-white/5 flex flex-col items-center justify-center gap-1">
+                      <span className="text-2xl">📷</span>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="text-white text-xs font-semibold">
+                      Trocar
+                    </span>
+                  </div>
+                </button>
+                <div>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 rounded-xl border border-white/10 text-sm text-white/70 hover:border-yellow-500/50 hover:text-white transition-colors"
+                  >
+                    {fotoPreview ? "Trocar foto" : "Escolher foto"}
+                  </button>
+                  <p className="text-white/30 text-xs mt-1.5">
+                    JPG ou PNG · máx. 5MB
+                  </p>
+                  <p className="text-white/30 text-xs">
+                    Aparecerá na lista do jogo
+                  </p>
+                </div>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFotoSelect}
+              />
+            </div>
+
+            {/* ── Nome ── */}
             <div>
               <label className="text-white/40 text-xs mb-1.5 block">
                 Nome completo *
@@ -403,6 +471,7 @@ export default function ConvitePage() {
               />
             </div>
 
+            {/* ── Telefone ── */}
             <div>
               <label className="text-white/40 text-xs mb-1.5 block">
                 WhatsApp *
@@ -416,6 +485,7 @@ export default function ConvitePage() {
               />
             </div>
 
+            {/* ── Posição ── */}
             <div>
               <label className="text-white/40 text-xs mb-1.5 block">
                 Posição
@@ -435,6 +505,7 @@ export default function ConvitePage() {
               </div>
             </div>
 
+            {/* ── Categoria ── */}
             <div>
               <label className="text-white/40 text-xs mb-1.5 block">
                 Categoria
@@ -454,6 +525,7 @@ export default function ConvitePage() {
               </div>
             </div>
 
+            {/* ── Tipo ── */}
             <div>
               <label className="text-white/40 text-xs mb-1.5 block">
                 Tipo de pagamento
@@ -477,19 +549,25 @@ export default function ConvitePage() {
 
             <button
               onClick={salvarPerfil}
-              disabled={salvandoPerfil}
-              className="w-full py-4 rounded-xl font-bold text-base disabled:opacity-50 text-white"
+              disabled={salvandoPerfil || uploadandoFoto}
+              className="w-full py-4 rounded-xl font-bold text-base disabled:opacity-50 text-white flex items-center justify-center gap-2"
               style={{
                 background: "linear-gradient(135deg, #e8b923, #c9920a)",
               }}
             >
-              {salvandoPerfil ? "Salvando..." : "Enviar pedido de entrada ⚽"}
+              {salvandoPerfil || uploadandoFoto ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  {uploadandoFoto ? "Enviando foto..." : "Salvando..."}
+                </>
+              ) : (
+                "Enviar pedido de entrada ⚽"
+              )}
             </button>
           </div>
         </div>
       </div>
     );
-  }
 
   return null;
 }
